@@ -1,8 +1,13 @@
 .env
 .venv/
 venv/
-.vscode/
-reports/
 __pycache__/
 *.pyc
 .DS_Store
+
+reports/
+data/
+*.jsonl
+.vscode/
+.venv/
+__pycache__/
