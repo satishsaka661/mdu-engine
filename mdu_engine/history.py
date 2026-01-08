@@ -29,6 +29,8 @@ def _ensure_db() -> sqlite3.Connection:
     conn.commit()
     return conn
 
+def get_latest_decision():
+    """Return the most recent decision record, or None."""
 
 def log_decision(payload: Dict[str, Any]) -> None:
     conn = _ensure_db()
@@ -68,3 +70,12 @@ def read_history(limit: int = 10) -> List[Dict[str, Any]]:
         except Exception:
             continue
     return out
+
+def get_latest_decision():
+    """
+    Return the most recent decision record (dict) or None if no history exists.
+    """
+    items = read_history(limit=1)
+    if not items:
+        return None
+    return items[0]

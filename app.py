@@ -7,7 +7,7 @@ from mdu_engine.decision_confidence import compute_decision_confidence
 from mdu_engine.decision_rules import RISK_PROFILES, decide_action
 from mdu_engine.reporting import recommendation_summary, write_markdown_report
 from mdu_engine.importers.router import route_import
-from mdu_engine.history import log_decision, read_history
+from mdu_engine.history import log_decision, read_history, get_latest_decision
 from mdu_engine.version import ENGINE_VERSION, RULESET_VERSION
 
 from mdu_engine.validation import validate_normalized_daily_schema, validation_to_dict
@@ -200,6 +200,11 @@ def build_channel_decision(label: str, import_result, result: dict, decision: di
 # -----------------------------
 # Streamlit UI
 # -----------------------------
+st.warning(
+    "MDU Engine provides decision support based on uploaded data. "
+    "It does not execute changes automatically and should not be considered "
+    "financial or investment advice. Always apply human judgment."
+)
 st.title("MDU Engine")
 with st.expander("About / Health", expanded=False):
     st.write("MDU Engine — Decision Engine for Meta Ads + Google Ads")
@@ -599,6 +604,10 @@ st.divider()
 st.header("Decision History (last 10 runs)")
 
 history = read_history(limit=10)
+latest = get_latest_decision()
+if latest:
+    st.subheader("Latest Decision (Audit Snapshot)")
+    st.json(latest)
 
 if not history:
     st.info("No decision history yet. Generate a report to create history.")

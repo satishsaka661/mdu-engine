@@ -1,3 +1,7 @@
+## v1.1.0
+- Added `get_latest_decision()` helper for auditability (retrieve latest decision record).
+- (Optional UI) Added “Latest Decision (Audit Snapshot)” panel.
+
 # Changelog
 
 ## v0.3.0 — 2026-01-08
