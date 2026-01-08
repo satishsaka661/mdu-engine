@@ -252,6 +252,13 @@ default_vpc = st.number_input(
     value=5000.0,
     step=100.0
 )
+# --- Footer (always visible) ---
+st.divider()
+st.caption("© 2026 Satish Saka · MDU Engine · MIT License · Public Decision Engine")
+
+if not uploaded_meta and not uploaded_google:
+    st.info("Upload at least one CSV (Meta and/or Google) to proceed.")
+    st.stop()
 
 if not uploaded_meta and not uploaded_google:
     st.info("Upload at least one CSV (Meta and/or Google) to proceed.")
