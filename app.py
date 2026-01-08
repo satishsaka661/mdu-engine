@@ -628,7 +628,5 @@ else:
 
 st.divider()
 st.caption(
-    "© 2026 Satish Saka · MDU Engine · "
-    "Open-source under MIT License · "
-    "Decision-support tool (not financial advice)"
+    "© 2026 Satish Saka · MDU Engine · MIT License · Public Decision Engine"
 )
