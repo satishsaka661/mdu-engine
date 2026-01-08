@@ -2,6 +2,28 @@ import streamlit as st
 import io
 import pandas as pd
 import hashlib
+def require_password():
+    pwd = st.secrets.get("APP_PASSWORD", "")
+    if not pwd:
+        return True  # allow if not configured
+
+    if "auth_ok" not in st.session_state:
+        st.session_state.auth_ok = False
+
+    if st.session_state.auth_ok:
+        return True
+
+    st.title("MDU Engine — Secure Access")
+    entered = st.text_input("Password", type="password")
+    if st.button("Unlock"):
+        if entered == pwd:
+            st.session_state.auth_ok = True
+            st.rerun()
+        else:
+            st.error("Incorrect password")
+    st.stop()
+
+require_password()
 
 from mdu_engine.decision_confidence import compute_decision_confidence
 from mdu_engine.decision_rules import RISK_PROFILES, decide_action
