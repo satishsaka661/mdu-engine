@@ -82,6 +82,73 @@ MDU Engine is built around explicit, inspectable decision logic:
 - Open-source under the MIT License  
   (no hidden logic or proprietary lock-in)
 
+Decision Guardrails & Validation 
+
+MDU Engine is designed as a decision-support system, not an automated execution tool.
+To ensure reliability and prevent unsafe recommendations, the engine applies strict validation guardrails before issuing any decision.
+
+When a Decision Is Blocked
+
+A decision will be intentionally blocked if the uploaded data does not meet minimum reliability requirements, including:
+
+Fewer than 7 daily rows (7–30 days recommended)
+
+Data not segmented by Day
+
+Missing or malformed spend, conversion, or date fields
+
+Aggregated or summary-only reports (monthly totals, campaign-only exports)
+
+When blocked, the engine does not run simulations and defaults to a safe HOLD action.
+
+Example: Insufficient Daily Data Window
+
+If a user uploads data containing only 1 day, MDU Engine responds with:
+
+Action: HOLD
+
+Confidence Tier: n/a
+
+Budget Change: 0%
+
+Reason: Insufficient daily data window
+
+Next Review: After fixing export
+
+The UI also provides structured explainability:
+
+What happened: Insufficient daily data window
+
+What could go wrong: Acting on insufficient data may lead to incorrect budget changes
+
+What to do next: Export a daily report (Breakdown: Day) with at least 7–30 days and re-upload
+
+This behavior is intentional and non-negotiable.
+
+Design Philosophy
+
+MDU Engine prioritizes:
+
+Decision safety over automation
+
+Transparency over black-box recommendations
+
+Human judgment over blind execution
+
+The engine will always refuse to act when confidence is mathematically or statistically unjustified.
+
+Reference Screenshots
+
+Real UI examples demonstrating blocked decisions and validation feedback are available in the repository:
+
+Decision blocked due to insufficient data window
+
+Validation feedback and user guidance
+
+Portfolio decision guardrails
+
+These screenshots reflect the live behavior of the public Streamlit app.
+
 ## Decision Contract
 
 MDU Engine follows a strict decision contract:
