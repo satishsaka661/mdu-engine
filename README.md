@@ -113,6 +113,16 @@ not replace it.
 
 These limitations are intentional to preserve decision integrity.
 
+## Sample Data
+
+This repository includes sample daily datasets to help users explore the MDU Engine without using real ad account data.
+
+**Included samples:**
+- Meta Ads (daily): `samples/meta_ads/meta_sample_daily.csv`
+- Google Ads (daily): `samples/google_ads/google_sample_daily.csv`
+
+These files follow the normalized schema used by the engine and can be uploaded directly into the Streamlit app.
+
 # MDU Engine — Meta + Google Ads Decision Engine
 
 MDU Engine is a Streamlit-based decision engine that helps marketers make safer budget decisions for Meta Ads and Google Ads using daily performance exports. It normalizes data, validates data quality, runs Monte Carlo simulations, and outputs SCALE / HOLD / REDUCE recommendations with explainability and downloadable reports.
