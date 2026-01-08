@@ -2,28 +2,6 @@ import streamlit as st
 import io
 import pandas as pd
 import hashlib
-def require_password():
-    pwd = st.secrets.get("APP_PASSWORD", "")
-    if not pwd:
-        return True  # allow if not configured
-
-    if "auth_ok" not in st.session_state:
-        st.session_state.auth_ok = False
-
-    if st.session_state.auth_ok:
-        return True
-
-    st.title("MDU Engine — Secure Access")
-    entered = st.text_input("Password", type="password")
-    if st.button("Unlock"):
-        if entered == pwd:
-            st.session_state.auth_ok = True
-            st.rerun()
-        else:
-            st.error("Incorrect password")
-    st.stop()
-
-require_password()
 
 from mdu_engine.decision_confidence import compute_decision_confidence
 from mdu_engine.decision_rules import RISK_PROFILES, decide_action
@@ -326,12 +304,11 @@ if not channel_outputs:
 for label, (platform_key, df_raw, import_result, result, decision) in channel_outputs.items():
     st.divider()
     st.header(f"{label}")
-    st.caption(f"Detected platform: {platform_key}")
     st.caption(
-    f"Engine: {result.get('engine_version', 'n/a')} | "
-    f"Ruleset: {result.get('ruleset_version', 'n/a')} | "
-    f"Seed: {result.get('random_seed', 'n/a')}"
-)
+        f"Engine: {result.get('engine_version', 'n/a')} | "
+        f"Ruleset: {result.get('ruleset_version', 'n/a')} | "
+        f"Seed: {result.get('random_seed', 'n/a')}"
+    )
 
     st.subheader("Raw Preview (uploaded file)")
     st.dataframe(df_raw.head(10))
@@ -383,12 +360,12 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
     csv_bytes = import_result.df.to_csv(index=False).encode("utf-8")
     safe_label = label.lower().replace(" ", "_")
     st.download_button(
-    label=f"Download Normalized CSV ({label})",
-    data=csv_bytes,
-    file_name=f"normalized_{safe_label}.csv",
-    mime="text/csv",
-    key=f"download_norm_{safe_label}",
-)
+        label=f"Download Normalized CSV ({label})",
+        data=csv_bytes,
+        file_name=f"normalized_{safe_label}.csv",
+        mime="text/csv",
+        key=f"download_norm_{safe_label}",
+    )
 
     # -----------------------------
     # Trends (Industry standard)
@@ -551,12 +528,12 @@ with pc3:
 if len(channels_for_portfolio) >= 2:
     try:
         portfolio = recommend_portfolio_action(
-    channels_for_portfolio,
-    risk_profile=profile_name,
-    min_portfolio_confidence=min_portfolio_conf,
-    min_signal_separation=min_signal_separation,
-    max_allowed_downside_risk=max_allowed_downside_risk,
-)
+            channels_for_portfolio,
+            risk_profile=profile_name,
+            min_portfolio_confidence=min_portfolio_conf,
+            min_signal_separation=min_signal_separation,
+            max_allowed_downside_risk=max_allowed_downside_risk,
+        )
 
         st.subheader("Recommended Action")
         st.write(portfolio.portfolio_action)
@@ -608,7 +585,6 @@ if len(channels_for_portfolio) >= 2:
 else:
     st.info("Upload both Meta and Google files (and pass validation) to get a portfolio recommendation.")
 
-
 # -----------------------------
 # Decision history (always at bottom)
 # -----------------------------
@@ -616,29 +592,36 @@ st.divider()
 st.header("Decision History (last 10 runs)")
 
 history = read_history(limit=10)
+
 if not history:
     st.info("No decision history yet. Generate a report to create history.")
 else:
-    dfh = pd.DataFrame(history)
+    dfh = pd.DataFrame(history).fillna("")
 
-# Make it readable
-history_df = pd.DataFrame(history).fillna("")
-st.dataframe(history_df)
+    # Put most important columns first (only if they exist)
+    preferred = [
+        "logged_at_utc", "type", "platform", "status", "action",
+        "confidence_tier", "confidence", "downside_risk",
+        "days_of_data", "date_min", "date_max",
+        "engine_version", "ruleset_version", "random_seed",
+        "recommended_change_pct_range", "next_review_window",
+        "validation_status", "block_reason",
+    ]
 
-# Put most important columns first (only if they exist)
-preferred = [
-    "logged_at_utc", "type", "platform", "status", "action",
-    "confidence_tier", "confidence", "downside_risk",
-    "days_of_data", "date_min", "date_max",
-    "engine_version", "ruleset_version", "random_seed",
-]
-cols = [c for c in preferred if c in dfh.columns] + [c for c in dfh.columns if c not in preferred]
-dfh = dfh[cols]
-csv_hist = dfh.to_csv(index=False).encode("utf-8")
-st.download_button(
-    "Download History (CSV)",
-    data=csv_hist,
-    file_name="mdu_history.csv",
-    mime="text/csv",
-)
-st.dataframe(dfh, use_container_width=True)
+    cols = [c for c in preferred if c in dfh.columns] + [
+        c for c in dfh.columns if c not in preferred
+    ]
+    dfh = dfh[cols]
+
+    # Download CSV
+    csv_hist = dfh.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        "Download History (CSV)",
+        data=csv_hist,
+        file_name="mdu_history.csv",
+        mime="text/csv",
+        key="download_history_csv",
+    )
+
+    # Show table
+    st.dataframe(dfh, use_container_width=True)
