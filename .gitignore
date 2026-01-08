@@ -2,9 +2,7 @@
 .venv/
 venv/
 .vscode/
+reports/
 __pycache__/
 *.pyc
 .DS_Store
-
-reports/
-data/decision_history.jsonl
