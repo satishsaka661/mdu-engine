@@ -622,7 +622,8 @@ else:
     dfh = pd.DataFrame(history)
 
 # Make it readable
-dfh = dfh.fillna("")
+history_df = pd.DataFrame(history).fillna("")
+st.dataframe(history_df)
 
 # Put most important columns first (only if they exist)
 preferred = [
