@@ -1,0 +1,10 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+.vscode/
+.env
+reports/
+history.db
+data/decision_history.jsonl

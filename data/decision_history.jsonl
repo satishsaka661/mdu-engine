@@ -1,0 +1,11 @@
+{"type": "channel", "platform": "Meta Ads", "action": "REDUCE", "confidence": 0.0, "downside_risk": 1.0, "spend_total": 19454.48, "timestamp": "2025-12-22T15:41:06"}
+{"type": "channel", "platform": "Google Ads", "action": "REDUCE", "confidence": 0.246, "downside_risk": 0.589, "spend_total": 30201.239999999998, "timestamp": "2025-12-22T15:41:53"}
+{"type": "channel", "platform": "Meta Ads", "action": "REDUCE", "confidence": 0.0, "downside_risk": 1.0, "spend_total": 19454.48, "timestamp": "2025-12-22T15:57:28"}
+{"type": "channel", "platform": "Google Ads", "action": "REDUCE", "confidence": 0.247, "downside_risk": 0.588, "spend_total": 30201.239999999998, "timestamp": "2025-12-22T15:57:32"}
+{"type": "portfolio", "platform": "Portfolio", "action": "No cross-channel reallocation recommended yet.", "portfolio_confidence": 0.05022853922972015, "reallocation_enabled": false, "from_platform": null, "to_platform": null, "amount": 0.0, "timestamp": "2025-12-22T15:57:40"}
+{"type": "channel", "platform": "Google Ads", "action": "REDUCE", "confidence": 0.25, "downside_risk": 0.583, "spend_total": 30201.239999999998, "timestamp": "2025-12-22T16:17:10"}
+{"type": "channel", "platform": "Google Ads", "action": "REDUCE", "confidence": 0.25, "downside_risk": 0.584, "spend_total": 30201.239999999998, "timestamp": "2025-12-22T16:17:23"}
+{"type": "channel", "platform": "Meta Ads", "action": "REDUCE", "confidence": 0.0, "downside_risk": 1.0, "spend_total": 19454.48, "timestamp": "2025-12-22T16:21:20"}
+{"type": "channel", "platform": "Meta Ads", "action": "REDUCE", "confidence": 0.0, "downside_risk": 1.0, "spend_total": 19454.48, "timestamp": "2025-12-22T16:26:39"}
+{"type": "channel", "platform": "Meta Ads", "action": "REDUCE", "confidence": 0.0, "downside_risk": 1.0, "spend_total": 19454.48, "timestamp": "2025-12-22T16:38:55"}
+{"type": "channel", "platform": "Meta Ads", "action": "REDUCE", "confidence": 0.0, "downside_risk": 1.0, "spend_total": 19454.48, "timestamp": "2025-12-22T17:04:28"}
