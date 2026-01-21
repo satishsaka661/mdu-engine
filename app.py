@@ -200,12 +200,30 @@ def build_channel_decision(label: str, import_result, result: dict, decision: di
 # -----------------------------
 # Streamlit UI
 # -----------------------------
-st.warning(
-    "MDU Engine provides decision support based on uploaded data. "
-    "It does not execute changes automatically and should not be considered "
-    "financial or investment advice. Always apply human judgment."
+st.info(
+    "MDU Engine provides decision support from uploaded performance exports. "
+    "It does not execute changes automatically. Apply human judgment."
 )
 st.title("MDU Engine")
+st.markdown(
+    """
+**MDU Engine helps you decide _when not to scale_ by making risk and uncertainty visible.**  
+It is a **decision-support** system (not auto-execution). It recommends **HOLD / SCALE / REDUCE** only when data is decision-ready.
+"""
+)
+
+with st.expander("How to interpret outcomes (important)", expanded=True):
+    st.markdown(
+        """
+### HOLD is a valid outcome (not a failure)
+HOLD means the current data does **not justify irreversible budget changes**.  
+This is a protective decision used when signals are noisy, volatile, or uncertain.
+
+### DECISION BLOCKED is a safety feature
+Blocked means the export or data window is not suitable for decisioning (e.g., too few days, malformed report).  
+MDU Engine blocks unsafe decisions instead of guessing.
+"""
+    )
 with st.expander("About / Health", expanded=False):
     st.write("MDU Engine — Decision Engine for Meta Ads + Google Ads")
     st.write(f"Engine Version: {ENGINE_VERSION}")
@@ -260,10 +278,6 @@ default_vpc = st.number_input(
 # --- Footer (always visible) ---
 st.divider()
 st.caption("© 2026 Satish Saka · MDU Engine · MIT License · Public Decision Engine")
-
-if not uploaded_meta and not uploaded_google:
-    st.info("Upload at least one CSV (Meta and/or Google) to proceed.")
-    st.stop()
 
 if not uploaded_meta and not uploaded_google:
     st.info("Upload at least one CSV (Meta and/or Google) to proceed.")
@@ -405,7 +419,18 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
     tier = decision.get("confidence_tier", "n/a")
 
     if status == "DECISION_BLOCKED":
-        st.error(f"DECISION BLOCKED: {decision.get('reason')}")
+       st.error("DECISION BLOCKED (Safety Gate)")
+       st.write("**Why it was blocked:**", decision.get("reason", ""))
+
+       st.write("**What to do next:**")
+       exp = decision.get("explainability", {}) or {}
+       steps = exp.get("what_to_do_next", []) or []
+       if steps:
+        for s in steps:
+            st.write(f"- {s}")
+       else:
+        st.write("- Export a daily report (7–30 days recommended) and re-upload.")
+
     elif status == "DECISION_WARN":
         st.warning("Decision issued with caution.")
     else:
@@ -418,7 +443,11 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         st.metric("Confidence Tier", tier)
     with c3:
         st.metric("Budget change", decision.get("recommended_change_pct_range", "n/a"))
-
+    if decision.get("action") == "HOLD" and status != "DECISION_BLOCKED":
+     st.info(
+        "HOLD is a protective decision. The current signal does not justify irreversible budget changes. "
+        "Maintain spend while data stabilizes, then review again in the next window."
+    )
     st.write("**Reason:**", decision.get("reason", ""))
     st.write("**User Explanation:**", decision.get("user_explanation", ""))
     st.caption(f"Next review: {decision.get('next_review_window', 'n/a')}")
