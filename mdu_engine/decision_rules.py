@@ -2,6 +2,11 @@ from dataclasses import dataclass
 from typing import Dict
 
 
+DECISION_OK = "DECISION_OK"
+DECISION_WARN = "DECISION_WARN"
+DECISION_BLOCKED = "DECISION_BLOCKED"
+
+
 @dataclass(frozen=True)
 class RiskProfile:
     name: str
@@ -36,7 +41,33 @@ RISK_PROFILES: Dict[str, RiskProfile] = {
 }
 
 
-def decide_action(decision_confidence: float, downside_risk: float, profile: RiskProfile, days_of_data: int | None = None) -> dict:
+def confidence_tier(confidence: float) -> str:
+    if confidence < 0.60:
+        return "LOW"
+    elif confidence < 0.75:
+        return "MEDIUM"
+    return "HIGH"
+
+
+def _budget_guidance(action: str, tier: str) -> tuple[str, str]:
+    """Returns (recommended_change_pct_range, next_review_window)."""
+    if action == "SCALE":
+        change = "+10% to +20%" if tier != "HIGH" else "+15% to +30%"
+    elif action == "REDUCE":
+        change = "-10% to -25%" if tier != "HIGH" else "-15% to -35%"
+    else:
+        change = "0% (no change)"
+
+    review = "3–5 days" if tier != "HIGH" else "2–3 days"
+    return change, review
+
+
+def decide_action(
+    decision_confidence: float,
+    downside_risk: float,
+    profile: RiskProfile,
+    days_of_data: int | None = None
+) -> dict:
     """
     Actions:
     - SCALE: evidence is strong and risk is acceptable
@@ -44,10 +75,18 @@ def decide_action(decision_confidence: float, downside_risk: float, profile: Ris
     - HOLD: pause scaling until confidence improves
     - REDUCE: risk is high enough that we should cut spend
     """
-        # ✅ Data quality gate: don't take strong actions with too little data
+
+    # --- Step A: data sufficiency gate (your existing logic) ---
     if days_of_data is not None and days_of_data < 7:
+        tier = confidence_tier(float(decision_confidence))
+        action = "HOLD"
+        change_range, review_window = _budget_guidance(action, tier)
         return {
-            "action": "HOLD",
+            "status": DECISION_BLOCKED,
+            "confidence_tier": tier,
+            "action": action,
+            "recommended_change_pct_range": change_range,
+            "next_review_window": review_window,
             "reason": f"Only {days_of_data} day(s) of data. Need at least 7 days for a reliable decision.",
             "user_explanation": "Hold spend steady. Upload 7–30 days of data to get a stable recommendation.",
             "explainability": {
@@ -57,9 +96,10 @@ def decide_action(decision_confidence: float, downside_risk: float, profile: Ris
             },
         }
 
+    # --- Step B: compute base decision FIRST (no tier gating yet) ---
     # Rule 0: If downside risk is extreme, reduce immediately
     if downside_risk >= profile.reduce_downside_risk:
-        return {
+        base = {
             "action": "REDUCE",
             "reason": (
                 f"Downside risk is extreme ({downside_risk:.3f} ≥ {profile.reduce_downside_risk:.2f}). "
@@ -87,8 +127,8 @@ def decide_action(decision_confidence: float, downside_risk: float, profile: Ris
         }
 
     # Rule 1: If downside risk is above safe limit, don't scale
-    if downside_risk > profile.max_downside_risk:
-        return {
+    elif downside_risk > profile.max_downside_risk:
+        base = {
             "action": "HOLD",
             "reason": (
                 f"Downside risk ({downside_risk:.3f}) is above the profile limit "
@@ -114,15 +154,15 @@ def decide_action(decision_confidence: float, downside_risk: float, profile: Ris
         }
 
     # Rule 2: Scale only if confidence is high enough
-    if decision_confidence >= profile.scale_threshold:
-        return {
+    elif decision_confidence >= profile.scale_threshold:
+        base = {
             "action": "SCALE",
             "reason": (
                 f"Confidence ({decision_confidence:.3f}) meets scale threshold "
                 f"({profile.scale_threshold:.2f}) for '{profile.name}'."
             ),
             "user_explanation": (
-                "You have strong evidence. Scale gradually (e.g., +10%) and monitor results."
+                "You have strong evidence. Scale gradually and monitor results."
             ),
             "explainability": {
                 "what_happened": [
@@ -141,8 +181,8 @@ def decide_action(decision_confidence: float, downside_risk: float, profile: Ris
         }
 
     # Rule 3: Maintain if confidence is moderate
-    if decision_confidence >= profile.maintain_threshold:
-        return {
+    elif decision_confidence >= profile.maintain_threshold:
+        base = {
             "action": "MAINTAIN",
             "reason": (
                 f"Confidence ({decision_confidence:.3f}) is moderate (>= {profile.maintain_threshold:.2f})."
@@ -167,24 +207,60 @@ def decide_action(decision_confidence: float, downside_risk: float, profile: Ris
         }
 
     # Rule 4: Otherwise hold
+    else:
+        base = {
+            "action": "HOLD",
+            "reason": f"Confidence ({decision_confidence:.3f}) is too low to act safely.",
+            "user_explanation": (
+                "Not enough reliable evidence to scale. Keep steady and improve data quality or wait for more days."
+            ),
+            "explainability": {
+                "what_happened": [
+                    f"Decision confidence is {decision_confidence:.3f}, below the minimum safe threshold for action.",
+                    "The system cannot reliably estimate outcomes if allocation is changed.",
+                ],
+                "what_could_go_wrong": [
+                    "Scaling on weak confidence can lead to unpredictable results and wasted spend.",
+                    "You may misread noise as signal and make irreversible budget moves.",
+                ],
+                "what_to_do_next": [
+                    "Hold allocations and collect more stable daily data.",
+                    "Improve tracking / conversion signal quality if possible, then re-run.",
+                ],
+            },
+        }
+
+    # --- Step C: apply confidence tier permission rules (industry standard) ---
+    tier = confidence_tier(float(decision_confidence))
+    status = DECISION_OK
+
+    # HARD BLOCK: LOW confidence cannot SCALE/REDUCE
+    if tier == "LOW" and base["action"] in ("SCALE", "REDUCE"):
+        base["action"] = "HOLD"
+        base["reason"] = "Confidence is LOW, so scaling/reducing is blocked for safety."
+        base["user_explanation"] = (
+            "The data signal is not reliable enough to change budgets. "
+            "Hold spend and collect more daily data before scaling or reducing."
+        )
+        status = DECISION_WARN
+
+    # MEDIUM confidence: allow SCALE/REDUCE but warn
+    elif tier == "MEDIUM" and base["action"] in ("SCALE", "REDUCE"):
+        status = DECISION_WARN
+        base["user_explanation"] = (base.get("user_explanation") or "") + (
+            "\n\n⚠️ Confidence is MEDIUM. Apply changes cautiously and review again after 3–5 days."
+        )
+
+    change_range, review_window = _budget_guidance(base["action"], tier)
+
+    # --- Step D: return final decision with industry fields ---
     return {
-        "action": "HOLD",
-        "reason": f"Confidence ({decision_confidence:.3f}) is too low to act safely.",
-        "user_explanation": (
-            "Not enough reliable evidence to scale. Keep steady and improve data quality or wait for more days."
-        ),
-        "explainability": {
-            "what_happened": [
-                f"Decision confidence is {decision_confidence:.3f}, below the minimum safe threshold for action.",
-                "The system cannot reliably estimate outcomes if allocation is changed.",
-            ],
-            "what_could_go_wrong": [
-                "Scaling on weak confidence can lead to unpredictable results and wasted spend.",
-                "You may misread noise as signal and make irreversible budget moves.",
-            ],
-            "what_to_do_next": [
-                "Hold allocations and collect more stable daily data.",
-                "Improve tracking / conversion signal quality if possible, then re-run.",
-            ],
-        },
+        "status": status,
+        "confidence_tier": tier,
+        "action": base["action"],
+        "recommended_change_pct_range": change_range,
+        "next_review_window": review_window,
+        "reason": base["reason"],
+        "user_explanation": base.get("user_explanation", ""),
+        "explainability": base.get("explainability", {}),
     }

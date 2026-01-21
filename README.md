@@ -1,3 +1,8 @@
+![MIT License](https://img.shields.io/badge/license-MIT-green)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Status](https://img.shields.io/badge/status-stable-brightgreen)
+![Build](https://img.shields.io/badge/build-passing-success)
+
 # MDU Engine — Meta + Google Ads Decision Engine
 
 MDU Engine is an open-source **decision-support system** that helps marketers, analysts, and founders decide whether to **SCALE**, **HOLD**, or **REDUCE** ad spend across **Meta Ads** and **Google Ads** using validated daily performance data.
@@ -127,3 +132,15 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
+
+## ⚠️ Production Use Disclaimer
+
+MDU Engine is a decision-support system.
+
+• It does not execute changes  
+• It does not connect to ad platforms  
+• It does not spend money  
+• It does not provide financial advice  
+
+All outputs must be reviewed by a qualified human decision-maker before being acted upon.
+
