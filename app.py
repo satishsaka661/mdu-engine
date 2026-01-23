@@ -224,6 +224,16 @@ def validate_snapshot(snapshot: dict) -> tuple[bool, list[str], list[str]]:
     for k in ["action", "status", "confidence_tier"]:
         if k not in snapshot["decision"]:
             warnings.append(f"Decision missing field: {k}")
+    # ✅ Anti-tamper: verify snapshot_hash integrity
+    expected_hash = snapshot.get("snapshot_hash")
+    if not expected_hash:
+        warnings.append("Missing snapshot_hash (anti-tamper check not available).")
+    else:
+        snap_copy = dict(snapshot)
+        snap_copy.pop("snapshot_hash", None)
+        calc = hashlib.sha256(json.dumps(snap_copy, sort_keys=True).encode("utf-8")).hexdigest()
+        if calc != expected_hash:
+            errors.append("snapshot_hash mismatch (snapshot may be edited/tampered).")
 
     ok = len(errors) == 0
     return ok, errors, warnings
@@ -876,6 +886,7 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         "engine_version": result.get("engine_version"),
         "ruleset_version": result.get("ruleset_version"),
         "random_seed": int(result.get("random_seed") or 0),
+        "input_hash": input_hash_from_norm_df(import_result.df),
         "simulations": int(result.get("simulations") or 0),
         "signal_reliability": float(result.get("signal_reliability") or 0.0),
         "scale_pct": float(result.get("scale_pct") or 0.0),
@@ -885,6 +896,12 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         "validation": result.get("validation", {}),
         "decision": decision,
     }
+    # ✅ Anti-tamper: hash the snapshot itself (excluding snapshot_hash field)
+    snapshot_for_hash = dict(snapshot)
+    snapshot_for_hash.pop("snapshot_hash", None)
+
+    snapshot_bytes_for_hash = json.dumps(snapshot_for_hash, sort_keys=True).encode("utf-8")
+    snapshot["snapshot_hash"] = hashlib.sha256(snapshot_bytes_for_hash).hexdigest()
 
     snapshot_bytes = pd.Series(snapshot).to_json().encode("utf-8")
 
