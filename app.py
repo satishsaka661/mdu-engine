@@ -3,6 +3,7 @@ import io
 import pandas as pd
 import hashlib
 from datetime import datetime, timezone
+from datetime import datetime
 
 from mdu_engine.decision_confidence import compute_decision_confidence
 from mdu_engine.decision_rules import RISK_PROFILES, decide_action
@@ -782,10 +783,15 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
     # -----------------------------
     if st.button(f"Generate Report File ({label})", key=f"report_{label}"):
 
-        result["spend_total"] = float(import_result.df["spend"].sum()) if "spend" in import_result.df else 0.0
+        # Ensure these exist for reporting
+        result["spend_total"] = float(import_result.df["spend"].sum())
         result["simulations"] = simulations
         result["signal_reliability"] = signal_reliability
         result["scale_pct"] = scale_pct
+
+        # ✅ Ensure deterministic seed exists for audit replay
+        if not result.get("random_seed"):
+            result["random_seed"] = stable_seed_from_df(import_result.df)
 
         report_path = write_markdown_report(
             result,
@@ -795,8 +801,37 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         )
 
         st.success(f"Report saved: {report_path}")
+    # -----------------------------
+    # ✅ Enterprise audit snapshot (JSON)
+    # -----------------------------
+    snapshot = {
+        "snapshot_type": "channel_decision",
+        "platform": label,
+        "logged_at_utc": datetime.utcnow().isoformat() + "Z",
+        "engine_version": result.get("engine_version"),
+        "ruleset_version": result.get("ruleset_version"),
+        "random_seed": int(result.get("random_seed") or 0),
+        "simulations": int(result.get("simulations") or 0),
+        "signal_reliability": float(result.get("signal_reliability") or 0.0),
+        "scale_pct": float(result.get("scale_pct") or 0.0),
+        "days_of_data": int(result.get("days_of_data") or 0),
+        "date_min": result.get("date_min"),
+        "date_max": result.get("date_max"),
+        "validation": result.get("validation", {}),
+        "decision": decision,
+    }
 
-        try:
+    snapshot_bytes = pd.Series(snapshot).to_json().encode("utf-8")
+
+    st.download_button(
+        label=f"Download Audit Snapshot (JSON) — {label}",
+        data=snapshot_bytes,
+        file_name=f"mdu_snapshot_{label.lower().replace(' ', '_')}.json",
+        mime="application/json",
+        key=f"download_snapshot_{label}",
+    )
+
+    try:
             with open(report_path, "rb") as f:
                 st.download_button(
                     label=f"Download Report ({label})",
@@ -805,11 +840,11 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
                     mime="text/markdown",
                     key=f"download_{label}",
                 )
-        except Exception as e:
+    except Exception as e:
             st.warning(f"Could not create download button: {e}")
 
-        # Log only when report is generated (your existing high-signal audit)
-        log_decision({
+    # Log only when report is generated (your existing high-signal audit)
+    log_decision({
             "type": "channel",
             "platform": label,
             "status": decision.get("status"),
@@ -825,13 +860,13 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
             "date_max": result.get("date_max"),
             "engine_version": result.get("engine_version"),
             "ruleset_version": result.get("ruleset_version"),
-            "random_seed": int(result.get("random_seed") or 0),
+            "random_seed": int(result["random_seed"]),
             "recommended_change_pct_range": decision.get("recommended_change_pct_range"),
             "next_review_window": decision.get("next_review_window"),
             "validation_status": (result.get("validation", {}) or {}).get("status"),
             "block_reason": (result.get("validation", {}) or {}).get("block_reason"),
             "input_hash": decision.get("input_hash") or result.get("input_hash"),
-        })
+    })
 
 
 # -----------------------------
