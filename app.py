@@ -875,7 +875,34 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
             platform_label=label
         )
 
-        st.success(f"Report saved: {report_path}")
+    st.success(f"Report saved: {report_path}")
+    # ✅ Download Audit Snapshot (JSON)
+    snapshot = {
+        "snapshot_type": "channel_decision",
+        "platform": label,
+        "logged_at_utc": datetime.utcnow().isoformat() + "Z",
+        "engine_version": result.get("engine_version"),
+        "ruleset_version": result.get("ruleset_version"),
+        "random_seed": int(result.get("random_seed") or 0),
+        "simulations": int(result.get("simulations") or 0),
+        "signal_reliability": float(result.get("signal_reliability") or 0.0),
+        "scale_pct": float(result.get("scale_pct") or 0.0),
+        "days_of_data": int(result.get("days_of_data") or 0),
+        "date_min": result.get("date_min"),
+        "date_max": result.get("date_max"),
+        "validation": result.get("validation", {}),
+        "decision": decision,
+    }
+
+    snapshot_bytes = json.dumps(snapshot, indent=2).encode("utf-8")
+
+    st.download_button(
+        label=f"Download Audit Snapshot (JSON) — {label}",
+        data=snapshot_bytes,
+        file_name=f"mdu_snapshot_{label.lower().replace(' ', '_')}.json",
+        mime="application/json",
+        key=f"download_snapshot_{label}",
+    )
     # -----------------------------
     # ✅ Enterprise audit snapshot (JSON)
     # -----------------------------
