@@ -4,7 +4,13 @@ import pandas as pd
 import hashlib
 import json
 from datetime import datetime, timezone
-from datetime import datetime
+import html
+
+# PDF (ReportLab)
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import mm
 
 from mdu_engine.decision_confidence import compute_decision_confidence
 from mdu_engine.decision_rules import RISK_PROFILES, decide_action
@@ -12,7 +18,6 @@ from mdu_engine.reporting import recommendation_summary, write_markdown_report
 from mdu_engine.importers.router import route_import
 from mdu_engine.history import log_decision, read_history, get_latest_decision
 from mdu_engine.version import ENGINE_VERSION, RULESET_VERSION
-
 from mdu_engine.validation import validate_normalized_daily_schema, validation_to_dict
 
 # NEW (portfolio)
@@ -113,6 +118,123 @@ def input_hash_from_norm_df(df_norm: pd.DataFrame) -> str:
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+def build_audit_pdf_bytes(platform_label: str, risk_profile_name: str, result: dict, decision: dict, snapshot: dict) -> bytes:
+    """
+    Enterprise audit-style PDF (simple, clean, credible).
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=18*mm,
+        rightMargin=18*mm,
+        topMargin=16*mm,
+        bottomMargin=16*mm
+    )
+    styles = getSampleStyleSheet()
+    story = []
+
+    story.append(Paragraph("<b>MDU Engine — Audit Report</b>", styles["Title"]))
+    story.append(Spacer(1, 8))
+
+    story.append(Paragraph(f"<b>Platform:</b> {platform_label}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Risk profile:</b> {risk_profile_name}", styles["Normal"]))
+    story.append(Paragraph(f"<b>Generated (UTC):</b> {snapshot.get('logged_at_utc')}", styles["Normal"]))
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph("<b>Versions</b>", styles["Heading2"]))
+    story.append(Paragraph(
+        f"Engine: {result.get('engine_version')}  |  Ruleset: {result.get('ruleset_version')}",
+        styles["Normal"]
+    ))
+    story.append(Paragraph(
+        f"Random seed: {result.get('random_seed')}  |  Input hash: {snapshot.get('input_hash')}",
+        styles["Normal"]
+    ))
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph("<b>Data window</b>", styles["Heading2"]))
+    story.append(Paragraph(f"Days of data: {result.get('days_of_data')}", styles["Normal"]))
+    story.append(Paragraph(f"Date range: {result.get('date_min')} → {result.get('date_max')}", styles["Normal"]))
+    story.append(Paragraph(f"Total spend: {result.get('spend_total')}", styles["Normal"]))
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph("<b>Decision</b>", styles["Heading2"]))
+    story.append(Paragraph(f"Status: {decision.get('status')}", styles["Normal"]))
+    story.append(Paragraph(
+        f"Outcome: {'BLOCK' if decision.get('status')=='DECISION_BLOCKED' else decision.get('action')}",
+        styles["Normal"]
+    ))
+    story.append(Paragraph(f"Confidence tier: {decision.get('confidence_tier')}", styles["Normal"]))
+    story.append(Paragraph(f"Recommended change: {decision.get('recommended_change_pct_range')}", styles["Normal"]))
+    story.append(Paragraph(f"Primary constraint: {decision.get('primary_constraint')}", styles["Normal"]))
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph("<b>Reason</b>", styles["Heading2"]))
+    story.append(Paragraph(str(decision.get("reason", "")), styles["Normal"]))
+    story.append(Spacer(1, 10))
+
+    story.append(Paragraph("<b>Validation</b>", styles["Heading2"]))
+    v = result.get("validation", {}) or {}
+    story.append(Paragraph(f"Validation status: {v.get('status')}", styles["Normal"]))
+    if v.get("block_reason"):
+        story.append(Paragraph(f"Block reason: {v.get('block_reason')}", styles["Normal"]))
+
+    warnings = v.get("warnings", []) or []
+    if warnings:
+        story.append(Paragraph("Warnings:", styles["Normal"]))
+        for w in warnings[:10]:
+            story.append(Paragraph(f"- {w}", styles["Normal"]))
+
+    doc.build(story)
+    return buf.getvalue()
+
+
+def report_text_to_pdf_bytes(title: str, md_text: str) -> bytes:
+    """
+    Convert report text to a clean PDF (Cloud Run safe).
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        leftMargin=18 * mm,
+        rightMargin=18 * mm,
+        topMargin=16 * mm,
+        bottomMargin=16 * mm,
+        title=title,
+    )
+
+    styles = getSampleStyleSheet()
+    h1 = styles["Heading1"]
+    h2 = styles["Heading2"]
+    body = styles["BodyText"]
+
+    story = [Paragraph(html.escape(title), h1), Spacer(1, 8)]
+
+    for line in (md_text or "").splitlines():
+        raw = line.strip()
+        if not raw:
+            story.append(Spacer(1, 6))
+            continue
+
+        if raw.startswith("### "):
+            story.append(Paragraph(html.escape(raw[4:]), h2))
+            story.append(Spacer(1, 4))
+        elif raw.startswith("## "):
+            story.append(Paragraph(html.escape(raw[3:]), h2))
+            story.append(Spacer(1, 4))
+        elif raw.startswith("# "):
+            story.append(Paragraph(html.escape(raw[2:]), h2))
+            story.append(Spacer(1, 4))
+        else:
+            if raw.startswith("- "):
+                raw = "• " + raw[2:]
+            story.append(Paragraph(html.escape(raw), body))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
 
 
 # -----------------------------
@@ -137,7 +259,6 @@ def build_structured_explanation(
 def classify_primary_constraint(status: str, action: str, validation_status: str | None) -> str:
     """
     Conservative, deterministic mapping.
-    (In v1: we infer from outcome; later you can push this into decide_action itself.)
     """
     if status == "DECISION_BLOCKED" or (validation_status == "DECISION_BLOCKED"):
         return "Data Sufficiency Gate"
@@ -161,6 +282,7 @@ def decision_mode_from_status_action(status: str, action: str) -> str:
     if action == "SCALE":
         return "Permissive (action allowed under constraints)"
     return "Strategic (restraint under known risk)"
+
 
 def validate_snapshot(snapshot: dict) -> tuple[bool, list[str], list[str]]:
     """
@@ -197,7 +319,6 @@ def validate_snapshot(snapshot: dict) -> tuple[bool, list[str], list[str]]:
     if errors:
         return False, errors, warnings
 
-    # Type / sanity checks
     if not isinstance(snapshot["decision"], dict):
         errors.append("decision must be an object.")
     if not isinstance(snapshot["validation"], dict):
@@ -210,21 +331,15 @@ def validate_snapshot(snapshot: dict) -> tuple[bool, list[str], list[str]]:
     except Exception:
         errors.append("random_seed must be an integer.")
 
-    # Version governance
     if snapshot["engine_version"] != ENGINE_VERSION:
-        warnings.append(
-            f"Engine version mismatch: snapshot={snapshot['engine_version']} current={ENGINE_VERSION}"
-        )
+        warnings.append(f"Engine version mismatch: snapshot={snapshot['engine_version']} current={ENGINE_VERSION}")
     if snapshot["ruleset_version"] != RULESET_VERSION:
-        warnings.append(
-            f"Ruleset version mismatch: snapshot={snapshot['ruleset_version']} current={RULESET_VERSION}"
-        )
+        warnings.append(f"Ruleset version mismatch: snapshot={snapshot['ruleset_version']} current={RULESET_VERSION}")
 
-    # Decision schema sanity
     for k in ["action", "status", "confidence_tier"]:
         if k not in snapshot["decision"]:
             warnings.append(f"Decision missing field: {k}")
-    # ✅ Anti-tamper: verify snapshot_hash integrity
+
     expected_hash = snapshot.get("snapshot_hash")
     if not expected_hash:
         warnings.append("Missing snapshot_hash (anti-tamper check not available).")
@@ -237,6 +352,8 @@ def validate_snapshot(snapshot: dict) -> tuple[bool, list[str], list[str]]:
 
     ok = len(errors) == 0
     return ok, errors, warnings
+
+
 # -----------------------------
 # Run pipeline for ONE file
 # -----------------------------
@@ -267,7 +384,6 @@ def process_uploaded_file(
         v = validate_normalized_daily_schema(df_norm)
         v_dict = validation_to_dict(v)
 
-        # Always build a result dict with window metrics (for UI/report)
         result = {
             "date_min": v.metrics.get("date_min"),
             "date_max": v.metrics.get("date_max"),
@@ -276,7 +392,6 @@ def process_uploaded_file(
             "validation": v_dict,
             "engine_version": ENGINE_VERSION,
             "ruleset_version": RULESET_VERSION,
-            # placeholders
             "decision_confidence": 0.0,
             "downside_risk": 1.0,
             "avg_net_value": float(df_norm["net_value"].mean()) if "net_value" in df_norm and len(df_norm) else 0.0,
@@ -287,7 +402,6 @@ def process_uploaded_file(
             decision = {
                 "status": "DECISION_BLOCKED",
                 "confidence_tier": "n/a",
-                # action can be HOLD but should never be treated as a valid HOLD; status dominates.
                 "action": "HOLD",
                 "recommended_change_pct_range": "0% (no change)",
                 "next_review_window": "After fixing export",
@@ -311,7 +425,6 @@ def process_uploaded_file(
                 ),
             )
 
-            # legacy explainability (kept)
             decision["explainability"] = {
                 "what_happened": [v.block_reason],
                 "what_could_go_wrong": [
@@ -322,9 +435,10 @@ def process_uploaded_file(
                     f"({MIN_DAYS_RECOMMENDED}–{MAX_DAYS_RECOMMENDED} recommended) and re-upload."
                 ],
             }
-            # For anti-gaming / logging
+
             decision["input_hash"] = input_hash_from_norm_df(df_norm)
             result["random_seed"] = stable_seed_from_df(df_norm)
+            result["input_hash"] = decision["input_hash"]
 
             return routed.platform, df_raw, import_result, result, decision
 
@@ -351,7 +465,6 @@ def process_uploaded_file(
             days_of_data=result.get("days_of_data"),
         )
 
-        # Attach governance fields (deterministic, non-marketing)
         validation_status = (result.get("validation", {}) or {}).get("status")
         decision["primary_constraint"] = classify_primary_constraint(
             status=decision.get("status", "DECISION_OK"),
@@ -363,7 +476,6 @@ def process_uploaded_file(
             decision.get("action", "HOLD"),
         )
 
-        # Confidence label (no pseudo precision)
         conf = float(result.get("decision_confidence", 0.0))
         if decision.get("status") == "DECISION_BLOCKED":
             conf_level = "n/a"
@@ -374,10 +486,8 @@ def process_uploaded_file(
         else:
             conf_level = "Low"
 
-        # Supporting factors (keep boring)
         supporting = []
-        if "warnings" in (result.get("validation", {}) or {}):
-            supporting.extend((result.get("validation", {}) or {}).get("warnings", []) or [])
+        supporting.extend((result.get("validation", {}) or {}).get("warnings", []) or [])
         if decision.get("reason"):
             supporting.append(decision.get("reason"))
 
@@ -386,7 +496,7 @@ def process_uploaded_file(
         decision["structured_explanation"] = build_structured_explanation(
             decision_outcome=outcome,
             primary_constraint=decision.get("primary_constraint", "Confidence Gate"),
-            supporting_factors=supporting[:6],  # limit noise
+            supporting_factors=supporting[:6],
             confidence_level=conf_level,
             operator_consideration=(
                 "Treat HOLD and BLOCK as valid outcomes. Re-run only when conditions materially change "
@@ -399,8 +509,6 @@ def process_uploaded_file(
         return routed.platform, df_raw, import_result, result, decision
 
     except Exception as e:
-        # HARD FAIL-CLOSED: never “error out” into a confusing state
-        # Return a blocked decision with minimal safe structure.
         decision = {
             "status": "DECISION_BLOCKED",
             "confidence_tier": "n/a",
@@ -422,7 +530,6 @@ def process_uploaded_file(
                 operator_consideration="Verify the export format (daily breakdown) and re-upload.",
             ),
         }
-        # Return minimal placeholders for UI
         df_raw = pd.DataFrame()
         import_result = type("ImportResult", (), {"df": pd.DataFrame(), "warnings": [], "detected_columns": {}})()
         result = {
@@ -470,7 +577,6 @@ def build_channel_decision(label: str, import_result, result: dict, decision: di
 # -----------------------------
 st.set_page_config(page_title="MDU Engine", layout="wide")
 
-# Guardrail: intended use (hostile-environment safe)
 st.warning(
     "Important — Intended Use\n\n"
     "MDU Engine is designed for experienced decision-makers evaluating real advertising spend decisions.\n\n"
@@ -478,7 +584,6 @@ st.warning(
     icon="⚠️"
 )
 
-# Responsibility acknowledgement: once per session, hard gate
 if "ack_responsibility" not in st.session_state:
     st.session_state.ack_responsibility = False
 
@@ -596,7 +701,6 @@ if not uploaded_meta and not uploaded_google:
 
 profile = RISK_PROFILES[profile_name]
 
-# Session-level rerun detection + run logging de-dupe
 if "last_input_hash_by_channel" not in st.session_state:
     st.session_state.last_input_hash_by_channel = {}
 if "logged_run_hashes" not in st.session_state:
@@ -612,7 +716,7 @@ if uploaded_meta:
     )
     channel_outputs["Meta Ads"] = out
 
-    platform_key, df_raw, import_result, result, decision = out
+    _, _, import_result, result, decision = out
     if decision.get("status") != "DECISION_BLOCKED":
         channels_for_portfolio["meta"] = build_channel_decision("Meta Ads", import_result, result, decision)
 
@@ -623,14 +727,13 @@ if uploaded_google:
     )
     channel_outputs["Google Ads"] = out
 
-    platform_key, df_raw, import_result, result, decision = out
+    _, _, import_result, result, decision = out
     if decision.get("status") != "DECISION_BLOCKED":
         channels_for_portfolio["google"] = build_channel_decision("Google Ads", import_result, result, decision)
 
 if not channel_outputs:
     st.error("No valid uploads could be processed. Please check your files.")
     st.stop()
-
 
 # -----------------------------
 # Per-channel output
@@ -645,18 +748,13 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         f"Seed: {result.get('random_seed', 'n/a')}"
     )
 
-    # Anti-gaming: warn on identical input reruns
     ih = decision.get("input_hash") or result.get("input_hash")
     prev_hash = st.session_state.last_input_hash_by_channel.get(label)
     if ih and prev_hash and ih == prev_hash:
-        st.warning(
-            "Identical input detected. Re-running without material change will not alter the outcome.",
-            icon="⚠️"
-        )
+        st.warning("Identical input detected. Re-running without material change will not alter the outcome.", icon="⚠️")
     if ih:
         st.session_state.last_input_hash_by_channel[label] = ih
 
-    # Silent run logging (behavioural evidence), de-duped by input hash
     if AUTO_LOG_RUNS and ih and (ih not in st.session_state.logged_run_hashes):
         st.session_state.logged_run_hashes.add(ih)
         try:
@@ -682,15 +780,11 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
                 "input_hash": ih,
             })
         except Exception:
-            # never fail the UI for logging issues
             pass
 
     st.subheader("Raw Preview (uploaded file)")
     st.dataframe(df_raw.head(10))
 
-    # -----------------------------
-    # Data Window
-    # -----------------------------
     st.subheader("Data Window")
     date_min = result.get("date_min")
     date_max = result.get("date_max")
@@ -700,22 +794,16 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
     with c1:
         st.metric("Days of data", days_of_data if days_of_data is not None else "n/a")
     with c2:
-        if date_min and date_max:
-            st.metric("Date range", f"{date_min} → {date_max}")
-        else:
-            st.metric("Date range", "n/a")
+        st.metric("Date range", f"{date_min} → {date_max}" if date_min and date_max else "n/a")
 
-    # Validation info
     v = result.get("validation", {})
     if v:
         if v.get("status") == "DECISION_BLOCKED":
             st.error(f"Validation failed: {v.get('block_reason')}")
         else:
             st.success("Validation passed: data is suitable for decisioning.")
-
         for w in v.get("warnings", []):
             st.warning(w)
-
         with st.expander("Validation metrics"):
             st.json(v.get("metrics", {}))
 
@@ -729,7 +817,6 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
     st.subheader("Normalized Preview (engine-ready)")
     st.dataframe(import_result.df.head(10))
 
-    # Download normalized data
     csv_bytes = import_result.df.to_csv(index=False).encode("utf-8")
     safe_label = label.lower().replace(" ", "_")
     st.download_button(
@@ -740,57 +827,33 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         key=f"download_norm_{safe_label}",
     )
 
-    # Trends
     st.subheader("Trends (Daily)")
     df_plot = import_result.df.copy()
     if "date" in df_plot.columns:
         df_plot["date"] = pd.to_datetime(df_plot["date"], errors="coerce")
         df_plot = df_plot.dropna(subset=["date"]).sort_values("date")
-
         if "spend" in df_plot.columns:
             st.write("**Spend over time**")
             st.line_chart(df_plot.set_index("date")[["spend"]])
-
         if "net_value" in df_plot.columns:
             st.write("**Net value over time**")
             st.line_chart(df_plot.set_index("date")[["net_value"]])
     else:
         st.info("Trend charts unavailable: normalized data has no date column.")
 
-    # -----------------------------
-    # Decision (Structured & governance-forward)
-    # -----------------------------
     st.subheader("Decision")
-
     status = decision.get("status", "DECISION_OK")
     tier = decision.get("confidence_tier", "n/a")
     action = decision.get("action", "HOLD")
 
-    # Decision outcome label
     if status == "DECISION_BLOCKED":
         st.error("Decision Outcome: BLOCK (Safety Outcome)")
-        st.write("**Why this was blocked**")
-        st.write(
-            "MDU Engine blocks decisions when conditions are unsuitable for informed action. "
-            "This is a safety outcome, not an error."
-        )
         st.write("**Blocking reason:**", decision.get("reason", ""))
-
-        st.write("**What to do next:**")
-        exp = decision.get("explainability", {}) or {}
-        steps = exp.get("what_to_do_next", []) or []
-        if steps:
-            for s in steps:
-                st.write(f"- {s}")
-        else:
-            st.write(f"- Export a daily report ({MIN_DAYS_RECOMMENDED}–{MAX_DAYS_RECOMMENDED} days recommended) and re-upload.")
-
     elif status == "DECISION_WARN":
         st.warning("Decision issued with caution.")
     else:
         st.success("Decision issued (non-executing).")
 
-    # Metrics row
     c1, c2, c3 = st.columns(3)
     with c1:
         st.metric("Decision Outcome", "BLOCK" if status == "DECISION_BLOCKED" else action)
@@ -799,19 +862,16 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
     with c3:
         st.metric("Budget change", decision.get("recommended_change_pct_range", "n/a"))
 
-    # Governance details
     st.write("**Decision Mode:**", decision.get("decision_mode", "n/a"))
     st.write("**Primary Constraint:**", decision.get("primary_constraint", "n/a"))
     st.write("**Reason (factual):**", decision.get("reason", ""))
-    st.write("**User Explanation (non-prescriptive):**", decision.get("user_explanation", ""))
+    st.write("**User Explanation:**", decision.get("user_explanation", ""))
 
-    # Structured explanation (immutable schema)
     st.subheader("Structured explanation (audit-friendly)")
     se = decision.get("structured_explanation", {}) or {}
     if se:
         st.write(f"**Decision Outcome:** {se.get('Decision Outcome', '')}")
         st.write(f"**Primary Constraint:** {se.get('Primary Constraint', '')}")
-
         st.write("**Supporting Factors:**")
         factors = se.get("Supporting Factors", []) or []
         if factors:
@@ -819,7 +879,6 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
                 st.write(f"- {f}")
         else:
             st.write("- n/a")
-
         st.write(f"**Confidence Level:** {se.get('Confidence Level', '')}")
         st.write(f"**Operator Consideration:** {se.get('Operator Consideration', '')}")
     else:
@@ -827,25 +886,19 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
 
     st.caption(f"Next review: {decision.get('next_review_window', 'n/a')}")
 
-    # Legacy explainability (kept for continuity)
     exp = decision.get("explainability")
     if exp:
         st.subheader("Why this outcome? (detail)")
         st.write("**What happened**")
         for x in exp.get("what_happened", []):
             st.write(f"- {x}")
-
         st.write("**What could go wrong**")
         for x in exp.get("what_could_go_wrong", []):
             st.write(f"- {x}")
-
         st.write("**What to do next**")
         for x in exp.get("what_to_do_next", []):
             st.write(f"- {x}")
 
-    # -----------------------------
-    # Summary (keep existing but remove “recommendation” tone)
-    # -----------------------------
     st.subheader("Summary")
     if status == "DECISION_BLOCKED":
         st.code(f"Outcome: BLOCK • Primary constraint: {decision.get('primary_constraint')} • Reason: {decision.get('reason')}")
@@ -854,36 +907,50 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         st.code(summary)
 
     # -----------------------------
-    # Report + Logging (existing behaviour: only when report generated)
+    # REPORT + SNAPSHOT + PDF (ALL INSIDE THE BUTTON)
     # -----------------------------
     if st.button(f"Generate Report File ({label})", key=f"report_{label}"):
+    # Ensure these exist for reporting/audit
+       result["spend_total"] = float(import_result.df["spend"].sum()) if "spend" in import_result.df.columns else float(result.get("spend_total", 0.0))
+       result["simulations"] = int(simulations)
+       result["signal_reliability"] = float(signal_reliability)
+       result["scale_pct"] = float(scale_pct)
 
-        # Ensure these exist for reporting
-        result["spend_total"] = float(import_result.df["spend"].sum())
-        result["simulations"] = simulations
-        result["signal_reliability"] = signal_reliability
-        result["scale_pct"] = scale_pct
+    # Ensure deterministic seed exists for audit replay
+    if not result.get("random_seed"):
+        result["random_seed"] = stable_seed_from_df(import_result.df)
 
-        # ✅ Ensure deterministic seed exists for audit replay
-        if not result.get("random_seed"):
-            result["random_seed"] = stable_seed_from_df(import_result.df)
-
-        report_path = write_markdown_report(
-            result,
-            decision,
-            profile.name,
-            platform_label=label
-        )
+    report_path = write_markdown_report(
+        result,
+        decision,
+        profile.name,
+        platform_label=label
+    )
 
     st.success(f"Report saved: {report_path}")
-    # ✅ Download Audit Snapshot (JSON)
+
+    # ---------- Download Markdown report ----------
+    try:
+        with open(report_path, "rb") as f:
+            st.download_button(
+                label=f"Download Report (Markdown) — {label}",
+                data=f.read(),
+                file_name=report_path.split("/")[-1],
+                mime="text/markdown",
+                key=f"download_md_{label}",
+            )
+    except Exception as e:
+        st.warning(f"Could not load report file for download: {e}")
+
+    # ---------- Build Audit Snapshot (JSON) ----------
     snapshot = {
         "snapshot_type": "channel_decision",
         "platform": label,
-        "logged_at_utc": datetime.utcnow().isoformat() + "Z",
+        "logged_at_utc": utc_now_iso(),
         "engine_version": result.get("engine_version"),
         "ruleset_version": result.get("ruleset_version"),
         "random_seed": int(result.get("random_seed") or 0),
+        "input_hash": decision.get("input_hash") or result.get("input_hash"),
         "simulations": int(result.get("simulations") or 0),
         "signal_reliability": float(result.get("signal_reliability") or 0.0),
         "scale_pct": float(result.get("scale_pct") or 0.0),
@@ -893,6 +960,13 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         "validation": result.get("validation", {}),
         "decision": decision,
     }
+
+    # Anti-tamper hash
+    snapshot_for_hash = dict(snapshot)
+    snapshot_for_hash.pop("snapshot_hash", None)
+    snapshot["snapshot_hash"] = hashlib.sha256(
+        json.dumps(snapshot_for_hash, sort_keys=True).encode("utf-8")
+    ).hexdigest()
 
     snapshot_bytes = json.dumps(snapshot, indent=2).encode("utf-8")
 
@@ -903,80 +977,45 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         mime="application/json",
         key=f"download_snapshot_{label}",
     )
-    # -----------------------------
-    # ✅ Enterprise audit snapshot (JSON)
-    # -----------------------------
-    snapshot = {
-        "snapshot_type": "channel_decision",
+
+    # ---------- PDF (ReportLab) ----------
+    try:
+        pdf_bytes = build_audit_pdf_bytes(label, profile.name, result, decision, snapshot)
+        st.download_button(
+            label=f"Download Report (PDF) — {label}",
+            data=pdf_bytes,
+            file_name=f"mdu_report_{label.lower().replace(' ', '_')}.pdf",
+            mime="application/pdf",
+            key=f"download_pdf_{label}",
+        )
+    except Exception as e:
+        st.warning(f"PDF generation failed: {e}")
+
+    # ---------- Log only when report is generated ----------
+    log_decision({
+        "type": "channel",
         "platform": label,
-        "logged_at_utc": datetime.utcnow().isoformat() + "Z",
+        "status": decision.get("status"),
+        "action": decision.get("action"),
+        "decision_mode": decision.get("decision_mode"),
+        "primary_constraint": decision.get("primary_constraint"),
+        "confidence_tier": decision.get("confidence_tier"),
+        "confidence": float(result.get("decision_confidence", 0.0)),
+        "downside_risk": float(result.get("downside_risk", 1.0)),
+        "spend_total": float(result.get("spend_total", 0.0)),
+        "days_of_data": int(result.get("days_of_data", 0)),
+        "date_min": result.get("date_min"),
+        "date_max": result.get("date_max"),
         "engine_version": result.get("engine_version"),
         "ruleset_version": result.get("ruleset_version"),
         "random_seed": int(result.get("random_seed") or 0),
-        "input_hash": input_hash_from_norm_df(import_result.df),
-        "simulations": int(result.get("simulations") or 0),
-        "signal_reliability": float(result.get("signal_reliability") or 0.0),
-        "scale_pct": float(result.get("scale_pct") or 0.0),
-        "days_of_data": int(result.get("days_of_data") or 0),
-        "date_min": result.get("date_min"),
-        "date_max": result.get("date_max"),
-        "validation": result.get("validation", {}),
-        "decision": decision,
-    }
-    # ✅ Anti-tamper: hash the snapshot itself (excluding snapshot_hash field)
-    snapshot_for_hash = dict(snapshot)
-    snapshot_for_hash.pop("snapshot_hash", None)
-
-    snapshot_bytes_for_hash = json.dumps(snapshot_for_hash, sort_keys=True).encode("utf-8")
-    snapshot["snapshot_hash"] = hashlib.sha256(snapshot_bytes_for_hash).hexdigest()
-
-    snapshot_bytes = pd.Series(snapshot).to_json().encode("utf-8")
-
-    st.download_button(
-        label=f"Download Audit Snapshot (JSON) — {label}",
-        data=snapshot_bytes,
-        file_name=f"mdu_snapshot_{label.lower().replace(' ', '_')}.json",
-        mime="application/json",
-        key=f"download_snapshot_{label}",
-    )
-
-    try:
-            with open(report_path, "rb") as f:
-                st.download_button(
-                    label=f"Download Report ({label})",
-                    data=f.read(),
-                    file_name=report_path.split("/")[-1],
-                    mime="text/markdown",
-                    key=f"download_{label}",
-                )
-    except Exception as e:
-            st.warning(f"Could not create download button: {e}")
-
-    # Log only when report is generated (your existing high-signal audit)
-    log_decision({
-            "type": "channel",
-            "platform": label,
-            "status": decision.get("status"),
-            "action": decision.get("action"),
-            "decision_mode": decision.get("decision_mode"),
-            "primary_constraint": decision.get("primary_constraint"),
-            "confidence_tier": decision.get("confidence_tier"),
-            "confidence": float(result.get("decision_confidence", 0.0)),
-            "downside_risk": float(result.get("downside_risk", 1.0)),
-            "spend_total": float(result.get("spend_total", 0.0)),
-            "days_of_data": int(result.get("days_of_data", 0)),
-            "date_min": result.get("date_min"),
-            "date_max": result.get("date_max"),
-            "engine_version": result.get("engine_version"),
-            "ruleset_version": result.get("ruleset_version"),
-            "random_seed": int(result["random_seed"]),
-            "recommended_change_pct_range": decision.get("recommended_change_pct_range"),
-            "next_review_window": decision.get("next_review_window"),
-            "validation_status": (result.get("validation", {}) or {}).get("status"),
-            "block_reason": (result.get("validation", {}) or {}).get("block_reason"),
-            "input_hash": decision.get("input_hash") or result.get("input_hash"),
+        "recommended_change_pct_range": decision.get("recommended_change_pct_range"),
+        "next_review_window": decision.get("next_review_window"),
+        "validation_status": (result.get("validation", {}) or {}).get("status"),
+        "block_reason": (result.get("validation", {}) or {}).get("block_reason"),
+        "input_hash": decision.get("input_hash") or result.get("input_hash"),
+        "logged_at_utc": utc_now_iso(),
     })
-
 
 # -----------------------------
 # Portfolio decision
@@ -1022,7 +1061,6 @@ if len(channels_for_portfolio) >= 2:
         st.metric("Portfolio Confidence", f"{portfolio.portfolio_confidence:.2f}")
 
         rec = portfolio.recommendation
-
         if rec.enabled:
             st.success(f"Reallocate {rec.amount:,.0f} from {rec.from_platform} → {rec.to_platform}")
             st.write(f"Expected downside risk reduction: {rec.expected_downside_risk_reduction_pct:.1f}%")
@@ -1037,11 +1075,9 @@ if len(channels_for_portfolio) >= 2:
         st.write("**What happened**")
         for x in portfolio.rationale_blocks.get("what_happened", []):
             st.write(f"- {x}")
-
         st.write("**What could go wrong**")
         for x in portfolio.rationale_blocks.get("what_could_go_wrong", []):
             st.write(f"- {x}")
-
         st.write("**What to do next**")
         for x in portfolio.rationale_blocks.get("what_to_do_next", []):
             st.write(f"- {x}")
@@ -1067,19 +1103,18 @@ if len(channels_for_portfolio) >= 2:
 else:
     st.info("Upload both Meta and Google files (and pass validation) to get a portfolio outcome.")
 
+
 # -----------------------------
 # Snapshot Replay (Audit)
 # -----------------------------
 st.divider()
 st.header("Replay a Snapshot (Audit)")
-
 st.caption(
     "Upload an audit snapshot JSON previously generated by MDU Engine. "
     "This verifies structural integrity and governance metadata (versions, seed, settings)."
 )
 
 snapshot_file = st.file_uploader("Upload Snapshot JSON", type=["json"], key="snapshot_replay")
-
 if snapshot_file:
     try:
         raw = snapshot_file.getvalue().decode("utf-8", errors="replace")
@@ -1106,7 +1141,6 @@ if snapshot_file:
             for e in errors:
                 st.write(f"- {e}")
 
-        # Optional: log replay attempt to history (enterprise audit trail)
         if st.button("Log Replay Result", key="log_replay"):
             log_decision({
                 "type": "replay",
@@ -1122,14 +1156,16 @@ if snapshot_file:
                 "days_of_data": int(snapshot.get("days_of_data") or 0),
                 "date_min": snapshot.get("date_min"),
                 "date_max": snapshot.get("date_max"),
-                "logged_at_utc": datetime.utcnow().isoformat() + "Z",
+                "logged_at_utc": utc_now_iso(),
             })
             st.success("Replay result logged to history.")
 
     except Exception as e:
         st.error(f"Could not read/parse snapshot JSON: {e}")
+
+
 # -----------------------------
-# Decision history (always at bottom)
+# Decision history
 # -----------------------------
 st.divider()
 st.header("Decision History (last 10 logs)")
@@ -1144,7 +1180,6 @@ if not history:
     st.info("No history yet. Logs are created automatically per unique run, and when reports are generated.")
 else:
     dfh = pd.DataFrame(history).fillna("")
-
     preferred = [
         "logged_at_utc", "type", "platform", "status", "action",
         "decision_mode", "primary_constraint",
@@ -1153,8 +1188,8 @@ else:
         "engine_version", "ruleset_version", "random_seed",
         "recommended_change_pct_range", "next_review_window",
         "validation_status", "block_reason", "input_hash",
+        "snapshot_hash",
     ]
-
     cols = [c for c in preferred if c in dfh.columns] + [c for c in dfh.columns if c not in preferred]
     dfh = dfh[cols]
 

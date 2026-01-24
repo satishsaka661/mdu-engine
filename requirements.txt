@@ -1,3 +1,5 @@
 streamlit
 pandas
 numpy
+reportlab
+reportlab==4.2.5
