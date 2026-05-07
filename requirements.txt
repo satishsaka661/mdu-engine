@@ -3,3 +3,4 @@ pandas
 numpy
 reportlab
 reportlab==4.2.5
+google-cloud-storage>=2.0.0
