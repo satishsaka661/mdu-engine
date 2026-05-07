@@ -18,6 +18,7 @@ from mdu_engine.reporting import recommendation_summary, write_markdown_report
 from mdu_engine.importers.router import route_import
 from mdu_engine.history import log_decision, read_history, get_latest_decision
 from mdu_engine.version import ENGINE_VERSION, RULESET_VERSION
+from mdu_engine.feedback import write_feedback, read_feedback, feedback_to_csv_bytes
 from mdu_engine.validation import validate_normalized_daily_schema, validation_to_dict
 
 # NEW (portfolio)
@@ -1205,4 +1206,166 @@ else:
     st.dataframe(dfh, use_container_width=True)
 
 st.divider()
+
+# ============================================================
+# PASTE THIS BLOCK INTO app.py
+# Location: IMMEDIATELY BEFORE the final st.caption line at
+# the bottom of app.py which reads:
+# st.caption("© 2026 Satish Saka · MDU Engine · MIT License · Public Decision Engine")
+# ============================================================
+
+st.divider()
+st.header("Share Your Feedback (Optional)")
+st.caption(
+    "Your feedback helps improve MDU Engine and supports its ongoing development. "
+    "Takes 30 seconds. Completely optional. No account required."
+)
+
+# Collect the latest decision context for attaching to feedback
+_feedback_platform = ""
+_feedback_outcome = ""
+_feedback_days = 0
+_feedback_spend = 0.0
+_feedback_tier = ""
+_feedback_engine = ""
+_feedback_ruleset = ""
+_feedback_hash = ""
+
+if channel_outputs:
+    _last_label = list(channel_outputs.keys())[-1]
+    _last_out = channel_outputs[_last_label]
+    _, _, _last_import, _last_result, _last_decision = _last_out
+    _feedback_platform = _last_label
+    _feedback_outcome = (
+        "BLOCK"
+        if _last_decision.get("status") == "DECISION_BLOCKED"
+        else _last_decision.get("action", "")
+    )
+    _feedback_days = int(_last_result.get("days_of_data") or 0)
+    _feedback_spend = float(_last_result.get("spend_total") or 0.0)
+    _feedback_tier = _last_decision.get("confidence_tier", "")
+    _feedback_engine = _last_result.get("engine_version", "")
+    _feedback_ruleset = _last_result.get("ruleset_version", "")
+    _feedback_hash = (
+        _last_decision.get("input_hash") or _last_result.get("input_hash") or ""
+    )
+
+with st.form("feedback_form", clear_on_submit=True):
+    st.markdown("**Tell us about your experience**")
+
+    fb_col1, fb_col2 = st.columns(2)
+    with fb_col1:
+        fb_name = st.text_input(
+            "Your name",
+            placeholder="e.g. Priya Sharma",
+            help="First name or full name — used only for internal records.",
+        )
+        fb_role = st.text_input(
+            "Your role / title",
+            placeholder="e.g. Performance Marketing Lead, Growth Analyst",
+        )
+    with fb_col2:
+        fb_company = st.text_input(
+            "Company or context",
+            placeholder="e.g. Agency name, startup, freelance",
+        )
+        fb_useful = st.radio(
+            "Was this evaluation useful?",
+            options=["Yes", "Partially", "No"],
+            horizontal=True,
+        )
+
+    fb_use_case = st.text_area(
+        "What did you use this evaluation for? (one sentence is fine)",
+        placeholder=(
+            "e.g. Deciding whether to scale our Meta campaign after a CPL spike. "
+            "The HOLD recommendation helped us avoid a premature budget cut."
+        ),
+        max_chars=500,
+        height=80,
+    )
+
+    fb_submitted = st.form_submit_button(
+        "Submit Feedback",
+        use_container_width=True,
+        type="primary",
+    )
+
+    if fb_submitted:
+        if not fb_name.strip() or not fb_role.strip():
+            st.warning(
+                "Please enter at least your name and role so we can record "
+                "this feedback meaningfully.",
+                icon="⚠️",
+            )
+        else:
+            record = {
+                "submitted_at_utc": datetime.now(timezone.utc).isoformat(),
+                "name": fb_name.strip(),
+                "role": fb_role.strip(),
+                "company": fb_company.strip(),
+                "use_case": fb_use_case.strip(),
+                "was_useful": fb_useful,
+                "decision_outcome": _feedback_outcome,
+                "platform": _feedback_platform,
+                "days_of_data": _feedback_days,
+                "spend_total": round(_feedback_spend, 2),
+                "confidence_tier": _feedback_tier,
+                "engine_version": _feedback_engine,
+                "ruleset_version": _feedback_ruleset,
+                "input_hash": _feedback_hash,
+            }
+            ok = write_feedback(record)
+            if ok:
+                st.success(
+                    "Thank you. Your feedback has been recorded. "
+                    "It helps demonstrate real-world use of MDU Engine.",
+                    icon="✅",
+                )
+            else:
+                st.warning(
+                    "Feedback could not be saved at this moment. "
+                    "Please try again.",
+                    icon="⚠️",
+                )
+
+# ============================================================
+# FEEDBACK HISTORY — Admin view
+# ============================================================
+with st.expander("Feedback History (Admin)", expanded=False):
+    fb_history = read_feedback(limit=50)
+    if not fb_history:
+        st.info("No feedback submitted yet.")
+    else:
+        st.caption(f"{len(fb_history)} feedback record(s) on file.")
+        fb_csv = feedback_to_csv_bytes()
+        if fb_csv:
+            st.download_button(
+                label="Download All Feedback (CSV)",
+                data=fb_csv,
+                file_name="mdu_engine_feedback.csv",
+                mime="text/csv",
+                key="download_feedback_csv",
+            )
+        _dfb = pd.DataFrame(fb_history)
+        _preferred_cols = [
+            "submitted_at_utc",
+            "name",
+            "role",
+            "company",
+            "was_useful",
+            "decision_outcome",
+            "platform",
+            "use_case",
+            "days_of_data",
+            "spend_total",
+        ]
+        _cols = [c for c in _preferred_cols if c in _dfb.columns] + [
+            c for c in _dfb.columns if c not in _preferred_cols
+        ]
+        st.dataframe(_dfb[_cols], use_container_width=True)
+
+# ============================================================
+# END OF ADDITION — st.caption line follows immediately below
+# ============================================================
 st.caption("© 2026 Satish Saka · MDU Engine · MIT License · Public Decision Engine")
