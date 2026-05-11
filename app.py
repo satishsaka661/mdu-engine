@@ -366,6 +366,17 @@ def build_channel_decision(label, import_result, result, decision):
 # ============================================================
 st.set_page_config(page_title="MDU Engine", layout="wide")
 
+# Google Analytics
+st.markdown("""
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RM6RGSHRL0"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-RM6RGSHRL0');
+</script>
+""", unsafe_allow_html=True)
+
 # ── Custom CSS Theme ──────────────────────────────────────
 st.markdown("""
 <style>
