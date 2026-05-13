@@ -4,3 +4,4 @@ numpy
 reportlab
 reportlab==4.2.5
 google-cloud-storage>=2.0.0
+plotly==5.22.0
