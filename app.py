@@ -1134,26 +1134,109 @@ if snapshot_file:
     except Exception as e:
         st.error(f"Could not read/parse snapshot JSON: {e}")
 
-# ── Decision History ──────────────────────────────────────
+# ── Decision History Dashboard ────────────────────────────
 st.divider()
-st.header("Decision History (last 10 logs)")
-history = read_history(limit=10)
-latest = get_latest_decision()
-if latest:
-    st.subheader("Latest Decision (Audit Snapshot)")
-    st.json(latest)
+st.header("Decision History")
+st.caption("All decision runs are automatically logged. History persists across sessions.")
+
+history = read_history(limit=100)
+
 if not history:
-    st.info("No history yet.")
+    st.info("No decision history yet. Run a decision above to start building your audit trail.")
 else:
     dfh = pd.DataFrame(history).fillna("")
-    preferred = ["logged_at_utc", "type", "platform", "status", "action", "decision_mode", "primary_constraint",
-                 "confidence_tier", "confidence", "downside_risk", "days_of_data", "date_min", "date_max",
-                 "engine_version", "ruleset_version", "random_seed", "recommended_change_pct_range",
-                 "next_review_window", "validation_status", "block_reason", "input_hash", "snapshot_hash"]
-    cols = [c for c in preferred if c in dfh.columns] + [c for c in dfh.columns if c not in preferred]
-    dfh = dfh[cols]
-    st.download_button("Download History (CSV)", data=dfh.to_csv(index=False).encode("utf-8"), file_name="mdu_history.csv", mime="text/csv", key="download_history_csv")
-    st.dataframe(dfh, use_container_width=True)
+
+    # ── Summary metrics ───────────────────────────────────
+    total_runs = len(dfh)
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        st.metric("Total Runs", total_runs)
+    with col2:
+        scale_count = len(dfh[dfh.get("action", pd.Series(dtype=str)).eq("SCALE")]) if "action" in dfh.columns else 0
+        st.metric("SCALE outcomes", scale_count)
+    with col3:
+        hold_count = len(dfh[dfh.get("action", pd.Series(dtype=str)).eq("HOLD")]) if "action" in dfh.columns else 0
+        st.metric("HOLD outcomes", hold_count)
+    with col4:
+        block_count = len(dfh[dfh.get("status", pd.Series(dtype=str)).eq("DECISION_BLOCKED")]) if "status" in dfh.columns else 0
+        st.metric("BLOCK outcomes", block_count)
+
+    # ── Outcome distribution chart ─────────────────────────
+    if "action" in dfh.columns and "status" in dfh.columns:
+        st.subheader("Outcome Distribution")
+
+        def get_final_outcome(row):
+            if row.get("status") == "DECISION_BLOCKED":
+                return "BLOCK"
+            return row.get("action", "UNKNOWN")
+
+        dfh["final_outcome"] = dfh.apply(get_final_outcome, axis=1)
+        outcome_counts = dfh["final_outcome"].value_counts().reset_index()
+        outcome_counts.columns = ["Outcome", "Count"]
+        st.bar_chart(outcome_counts.set_index("Outcome"))
+
+    # ── Confidence trend chart ─────────────────────────────
+    if "confidence" in dfh.columns and "logged_at_utc" in dfh.columns:
+        st.subheader("Decision Confidence Over Time")
+        df_trend = dfh[["logged_at_utc", "confidence", "platform"]].copy()
+        df_trend = df_trend[df_trend["confidence"] != ""]
+        df_trend["confidence"] = pd.to_numeric(df_trend["confidence"], errors="coerce")
+        df_trend["logged_at_utc"] = pd.to_datetime(df_trend["logged_at_utc"], errors="coerce")
+        df_trend = df_trend.dropna(subset=["logged_at_utc", "confidence"]).sort_values("logged_at_utc")
+        if not df_trend.empty:
+            st.line_chart(df_trend.set_index("logged_at_utc")[["confidence"]])
+
+    # ── Platform filter ────────────────────────────────────
+    st.subheader("History Log")
+
+    if "platform" in dfh.columns:
+        platforms = ["All"] + sorted(dfh["platform"].dropna().unique().tolist())
+        selected_platform = st.selectbox("Filter by platform", platforms, key="history_platform_filter")
+        if selected_platform != "All":
+            dfh = dfh[dfh["platform"] == selected_platform]
+
+    # ── Clean table display ────────────────────────────────
+    preferred = [
+        "logged_at_utc", "type", "platform", "final_outcome",
+        "confidence", "downside_risk", "days_of_data",
+        "date_min", "date_max", "spend_total",
+        "engine_version", "ruleset_version", "input_hash"
+    ]
+    display_cols = [c for c in preferred if c in dfh.columns]
+    remaining = [c for c in dfh.columns if c not in display_cols]
+    display_cols = display_cols + remaining
+
+    st.dataframe(dfh[display_cols].head(50), use_container_width=True)
+
+    # ── Downloads ──────────────────────────────────────────
+    dl_col1, dl_col2 = st.columns(2)
+
+    with dl_col1:
+        st.download_button(
+            label="Download History (CSV)",
+            data=dfh.to_csv(index=False).encode("utf-8"),
+            file_name="mdu_decision_history.csv",
+            mime="text/csv",
+            key="download_history_csv",
+        )
+
+    with dl_col2:
+        from mdu_engine.history import history_to_json_bytes
+        st.download_button(
+            label="Download History (JSON)",
+            data=history_to_json_bytes(limit=500),
+            file_name="mdu_decision_history.json",
+            mime="application/json",
+            key="download_history_json",
+        )
+
+    # ── Latest decision audit snapshot ────────────────────
+    latest = get_latest_decision()
+    if latest:
+        with st.expander("Latest Decision — Audit Snapshot", expanded=False):
+            st.json(latest)
+
 
 # ── Feedback Section ──────────────────────────────────────
 st.divider()
