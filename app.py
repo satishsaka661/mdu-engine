@@ -901,10 +901,10 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         for w in v.get("warnings", []):
             st.warning(w)
         with st.expander("Validation metrics"):
-            st.json(v.get("metrics", {}))
+            st.code(json.dumps(v.get("metrics", {}), indent=2), language="json")
 
     with st.expander("Detected column mapping"):
-        st.json(getattr(import_result, "detected_columns", {}))
+        st.code(json.dumps(getattr(import_result, "detected_columns", {}), indent=2), language="json")
 
     for w in getattr(import_result, "warnings", []) or []:
         st.warning(w)
@@ -1123,7 +1123,7 @@ if snapshot_file:
         snapshot = json.loads(snapshot_file.getvalue().decode("utf-8", errors="replace"))
         ok, errors, warnings = validate_snapshot(snapshot)
         st.subheader("Snapshot Preview")
-        st.json(snapshot)
+        st.code(json.dumps(snapshot, indent=2), language="json")
         st.subheader("Replay Result")
         if ok:
             st.success("REPLAY PASS ✅ — Snapshot is structurally valid and audit-ready.")
@@ -1273,7 +1273,7 @@ else:
     latest = get_latest_decision()
     if latest:
         with st.expander("Latest Decision — Audit Snapshot", expanded=False):
-            st.json(latest)
+            st.code(json.dumps(latest, indent=2), language="json")
 
 
 # ── Feedback Section ──────────────────────────────────────
