@@ -901,10 +901,10 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         for w in v.get("warnings", []):
             st.warning(w)
         with st.expander("Validation metrics"):
-            st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;">{json.dumps(v.get("metrics", {}), indent=2)}</pre>', unsafe_allow_html=True)
+            st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;white-space:pre;">{json.dumps(v.get("metrics", {}), indent=2)}</pre>', unsafe_allow_html=True)
 
     with st.expander("Detected column mapping"):
-        st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;">{json.dumps(getattr(import_result, "detected_columns", {}), indent=2)}</pre>', unsafe_allow_html=True)
+        st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;white-space:pre;">{json.dumps(getattr(import_result, "detected_columns", {}), indent=2)}</pre>', unsafe_allow_html=True)
 
     for w in getattr(import_result, "warnings", []) or []:
         st.warning(w)
@@ -1123,7 +1123,7 @@ if snapshot_file:
         snapshot = json.loads(snapshot_file.getvalue().decode("utf-8", errors="replace"))
         ok, errors, warnings = validate_snapshot(snapshot)
         st.subheader("Snapshot Preview")
-        st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;">{json.dumps(snapshot, indent=2)}</pre>', unsafe_allow_html=True)
+        st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;white-space:pre;">{json.dumps(snapshot, indent=2)}</pre>', unsafe_allow_html=True)
         st.subheader("Replay Result")
         if ok:
             st.success("REPLAY PASS ✅ — Snapshot is structurally valid and audit-ready.")
@@ -1273,7 +1273,7 @@ else:
     latest = get_latest_decision()
     if latest:
         with st.expander("Latest Decision — Audit Snapshot", expanded=False):
-            st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;">{json.dumps(latest, indent=2)}</pre>', unsafe_allow_html=True)
+            st.markdown(f'<pre style="background:#1A2E45;color:#FFB347;padding:1rem;border-radius:8px;font-size:0.8rem;overflow-x:auto;white-space:pre;">{json.dumps(latest, indent=2)}</pre>', unsafe_allow_html=True)
 
 
 # ── Feedback Section ──────────────────────────────────────
