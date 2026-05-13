@@ -1,4 +1,5 @@
 import streamlit as st
+import plotly.express as px
 import io
 import pandas as pd
 import hashlib
@@ -1187,7 +1188,6 @@ else:
         outcome_counts = dfh["final_outcome"].value_counts().reset_index()
         outcome_counts.columns = ["Outcome", "Count"]
 
-        import plotly.express as px
         fig1 = px.bar(
             outcome_counts, x="Outcome", y="Count",
             color="Outcome",
