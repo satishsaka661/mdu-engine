@@ -698,6 +698,18 @@ label, .stTextInput label, .stTextArea label,
 p, span, div {
     color: inherit;
 }
+/* Fix chart backgrounds */
+[data-testid="stArrowVegaLiteChart"] canvas,
+.vega-embed canvas,
+iframe {
+    background-color: #0D1B2A !important;
+    border-radius: 8px !important;
+}
+[data-testid="stArrowVegaLiteChart"] {
+    background-color: #1E3A5F !important;
+    border-radius: 8px !important;
+    padding: 0.5rem !important;
+}           
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: #0D1B2A; }
 ::-webkit-scrollbar-thumb { background: #1E3A5F; border-radius: 3px; }
