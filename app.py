@@ -1186,7 +1186,21 @@ else:
         dfh["final_outcome"] = dfh.apply(get_final_outcome, axis=1)
         outcome_counts = dfh["final_outcome"].value_counts().reset_index()
         outcome_counts.columns = ["Outcome", "Count"]
-        st.bar_chart(outcome_counts.set_index("Outcome"))
+
+        import plotly.express as px
+        fig1 = px.bar(
+            outcome_counts, x="Outcome", y="Count",
+            color="Outcome",
+            color_discrete_map={"SCALE": "#00C896", "HOLD": "#FFB347", "REDUCE": "#1E90FF", "BLOCK": "#FF4444"},
+            template="plotly_dark",
+        )
+        fig1.update_layout(
+            paper_bgcolor="#0D1B2A",
+            plot_bgcolor="#0D1B2A",
+            font_color="#E8F0FE",
+            showlegend=False,
+        )
+        st.plotly_chart(fig1, use_container_width=True)
 
     # ── Confidence trend chart ─────────────────────────────
     if "confidence" in dfh.columns and "logged_at_utc" in dfh.columns:
@@ -1197,7 +1211,19 @@ else:
         df_trend["logged_at_utc"] = pd.to_datetime(df_trend["logged_at_utc"], errors="coerce")
         df_trend = df_trend.dropna(subset=["logged_at_utc", "confidence"]).sort_values("logged_at_utc")
         if not df_trend.empty:
-            st.line_chart(df_trend.set_index("logged_at_utc")[["confidence"]])
+            import plotly.express as px
+            fig2 = px.line(
+                df_trend, x="logged_at_utc", y="confidence",
+                template="plotly_dark",
+                labels={"logged_at_utc": "Date", "confidence": "Confidence Score"},
+            )
+            fig2.update_layout(
+                paper_bgcolor="#0D1B2A",
+                plot_bgcolor="#0D1B2A",
+                font_color="#E8F0FE",
+            )
+            fig2.update_traces(line_color="#1E90FF")
+            st.plotly_chart(fig2, use_container_width=True)
 
     # ── Platform filter ────────────────────────────────────
     st.subheader("History Log")
