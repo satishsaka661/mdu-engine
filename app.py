@@ -24,6 +24,7 @@ from mdu_engine.validation import validate_normalized_daily_schema, validation_t
 
 # NEW (portfolio)
 from mdu_engine.portfolio_decision import ChannelDecision, recommend_portfolio_action
+from login_page import show_login_gate, show_user_header
 
 
 # -----------------------------
@@ -366,6 +367,9 @@ def build_channel_decision(label, import_result, result, decision):
 # STREAMLIT UI
 # ============================================================
 st.set_page_config(page_title="MDU Engine", layout="wide")
+if not show_login_gate():
+    st.stop()
+show_user_header()
 
 # Google Analytics
 st.markdown("""
