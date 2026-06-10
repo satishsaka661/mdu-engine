@@ -26,8 +26,7 @@ from email.mime.text import MIMEText
 SENDER_EMAIL   = os.environ.get("MDU_EMAIL_SENDER", "satish@mduengine.com")
 SENDER_PASSWORD = os.environ.get("MDU_EMAIL_PASSWORD", "")
 SMTP_HOST      = "smtp.zoho.in"
-SMTP_PORT      = 587
-
+SMTP_PORT      = 465
 
 def send_otp_email(recipient_email: str, name: str, otp: str) -> dict:
     """
@@ -111,9 +110,7 @@ MDU Engine · app.mduengine.com
         msg.attach(MIMEText(plain_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
-            server.ehlo()
-            server.starttls()
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, recipient_email, msg.as_string())
 
