@@ -25,7 +25,7 @@ from email.mime.text import MIMEText
 
 SENDER_EMAIL   = os.environ.get("MDU_EMAIL_SENDER", "satish@mduengine.com")
 SENDER_PASSWORD = os.environ.get("MDU_EMAIL_PASSWORD", "")
-SMTP_HOST      = "smtp.gmail.com"
+SMTP_HOST      = "smtp.zoho.in"
 SMTP_PORT      = 587
 
 
