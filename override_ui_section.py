@@ -36,7 +36,7 @@ def show_override_log_prompt(
                         border-radius:8px; padding:16px; margin-bottom:12px;">
                 <p style="color:#ccc; margin:0; font-size:14px;">
                     This recommendation has been logged. You'll be prompted in
-                    <strong style="color:#1E90FF;">72 hours</strong> to record
+                    <strong style="color:#1E90FF;">48 hours</strong> to record
                     what you did and what happened next.
                 </p>
                 <p style="color:#666; margin:8px 0 0 0; font-size:12px;">
@@ -67,11 +67,11 @@ def show_override_log_prompt(
     return log_id
 
 
-# ── Section 2: 72-hour follow-up form ─────────────────────────────────────────
+# ── Section 2: 48-hour follow-up form ─────────────────────────────────────────
 
 def show_followup_forms():
     """
-    Shows follow-up forms for any pending decisions that are now due (72hrs elapsed).
+    Shows follow-up forms for any pending decisions that are now due (48hrs elapsed).
     Call this near the top of app.py so it surfaces on every session.
     """
     pending = get_pending_followups()
@@ -79,7 +79,7 @@ def show_followup_forms():
         return
 
     st.markdown("---")
-    st.markdown("## ⏱ 72-Hour Follow-Up")
+    st.markdown("## ⏱ 48-Hour Follow-Up")
     st.markdown(
         "These decisions are ready for your outcome report. "
         "This data helps calibrate MDU Engine's recommendations over time."
@@ -134,7 +134,7 @@ def show_followup_forms():
                 )
 
             outcome_direction = st.radio(
-                "What happened to campaign performance in the 72 hours after?",
+                "What happened to campaign performance in the 48 hours after?",
                 ["Improved", "Unchanged", "Worsened"],
                 key=f"direction_{log_id}",
                 horizontal=True,

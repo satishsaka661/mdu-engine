@@ -1,7 +1,7 @@
 """
 override_log.py — MDU Engine Override Logging
 Tracks whether SCALE/HOLD/REDUCE/BLOCK recommendations were followed or overridden,
-and what happened to campaign performance 72 hours later.
+and what happened to campaign performance 48 hours later.
 Persisted to GCS alongside decision history.
 """
 
@@ -92,7 +92,7 @@ def create_override_log(
 ) -> str:
     """
     Called immediately after MDU Engine outputs a recommendation.
-    Creates a pending log entry awaiting the 72-hour follow-up.
+    Creates a pending log entry awaiting the 48-hour follow-up.
     Returns the log_id.
     """
     log_id = str(uuid.uuid4())
@@ -104,7 +104,7 @@ def create_override_log(
         "campaign_name": campaign_name,
         "risk_profile": risk_profile,
         "created_at": datetime.utcnow().isoformat(),
-        "followup_due_at": (datetime.utcnow() + timedelta(hours=72)).isoformat(),
+        "followup_due_at": (datetime.utcnow() + timedelta(hours=48)).isoformat(),
         "status": "pending",           # pending → completed
         "was_followed": None,          # True / False
         "override_reason": None,       # free text if overridden
@@ -124,7 +124,7 @@ def record_outcome(
     outcome_direction: str,   # "improved" | "worsened" | "unchanged"
 ):
     """
-    Called when the operator submits the 72-hour follow-up form.
+    Called when the operator submits the 48-hour follow-up form.
     Updates the log entry with outcome data.
     """
     logs = _load_all_logs()
@@ -147,7 +147,7 @@ def get_pending_followups() -> list:
     """
     Returns all log entries where:
     - status is 'pending'
-    - followup_due_at has passed (i.e. 72 hours have elapsed)
+    - followup_due_at has passed (i.e. 48 hours have elapsed)
     """
     logs = _load_all_logs()
     now = datetime.utcnow()
