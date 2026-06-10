@@ -1,0 +1,18 @@
+[
+  {
+    "log_id": "0ca10f6c-5ad5-47e0-ad1a-85013cfc2a7d",
+    "decision_id": "46a3280f35ec3e7d59cc68db015cb5fce0ffa8718506635842e3870f86f9a275",
+    "recommendation": "HOLD",
+    "confidence_score": 0.252,
+    "campaign_name": "Meta Ads",
+    "risk_profile": "balanced",
+    "created_at": "2026-06-10T18:44:46.091857",
+    "followup_due_at": "2026-06-13T18:44:46.091870",
+    "status": "pending",
+    "was_followed": null,
+    "override_reason": null,
+    "outcome_description": null,
+    "outcome_direction": null,
+    "outcome_logged_at": null
+  }
+]

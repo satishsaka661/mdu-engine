@@ -25,6 +25,7 @@ from mdu_engine.validation import validate_normalized_daily_schema, validation_t
 # NEW (portfolio)
 from mdu_engine.portfolio_decision import ChannelDecision, recommend_portfolio_action
 from login_page import show_login_gate, show_user_header
+from override_ui_section import show_override_log_prompt, show_followup_forms, show_override_dashboard
 
 
 # -----------------------------
@@ -979,6 +980,13 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         st.info("Structured explanation unavailable.")
 
     st.caption(f"Next review: {decision.get('next_review_window', 'n/a')}")
+    show_override_log_prompt(
+        decision_id=ih or str(result.get('random_seed', '')),
+        recommendation="BLOCK" if status == "DECISION_BLOCKED" else action,
+        confidence_score=float(result.get("decision_confidence", 0.0)),
+        campaign_name=label,
+        risk_profile=profile_name,
+    )
 
     exp = decision.get("explainability")
     if exp:
@@ -1252,6 +1260,8 @@ else:
     st.dataframe(dfh[display_cols].head(50), use_container_width=True)
 
     # ── Downloads ──────────────────────────────────────────
+    show_override_dashboard()
+    st.divider()
     dl_col1, dl_col2 = st.columns(2)
 
     with dl_col1:
