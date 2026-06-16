@@ -103,14 +103,13 @@ def _render_email_step():
                 st.error("Please enter a valid email address.")
                 return
 
-            # Generate and store OTP
-            otp = generate_otp()
-            store_otp(email, name, otp)
-
-            # Send email
-            result = send_otp_email(email, name, otp)
+            with st.spinner("Sending your login code to " + email + "..."):
+                otp = generate_otp()
+                store_otp(email, name, otp)
+                result = send_otp_email(email, name, otp)
 
             if result["success"]:
+                st.success("Code sent! Check your inbox and spam folder.")
                 st.session_state.login_step = "enter_otp"
                 st.session_state.login_email_pending = email
                 st.session_state.login_name_pending = name
@@ -159,13 +158,18 @@ def _render_otp_step():
         st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
 
         if st.button("Verify & Sign In", use_container_width=True, type="primary"):
-            result = verify_otp(email, otp_input.strip())
+            if not otp_input.strip():
+                st.error("Please enter the 6-digit code from your email.")
+                return
+
+            with st.spinner("Verifying your code..."):
+                result = verify_otp(email, otp_input.strip())
+
             if result["success"]:
-                # Set authenticated session
+                st.success(f"Welcome, {result['name']}! Loading your dashboard...")
                 st.session_state.authenticated = True
                 st.session_state.user_email = email
                 st.session_state.user_name = result["name"]
-                # Clean up login state
                 st.session_state.pop("login_step", None)
                 st.session_state.pop("login_email_pending", None)
                 st.session_state.pop("login_name_pending", None)
@@ -175,9 +179,21 @@ def _render_otp_step():
 
         st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
 
-        if st.button("← Use a different email", use_container_width=False):
-            st.session_state.login_step = "enter_email"
-            st.rerun()
+        col_back, col_resend = st.columns(2)
+        with col_back:
+            if st.button("← Different email", use_container_width=True):
+                st.session_state.login_step = "enter_email"
+                st.rerun()
+        with col_resend:
+            if st.button("Resend code", use_container_width=True):
+                with st.spinner("Resending code..."):
+                    new_otp = generate_otp()
+                    store_otp(email, name, new_otp)
+                    resend_result = send_otp_email(email, name, new_otp)
+                if resend_result["success"]:
+                    st.success("New code sent. Check your inbox.")
+                else:
+                    st.error(f"Could not resend: {resend_result['error']}")
 
 
 def show_user_header():
