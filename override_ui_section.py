@@ -21,6 +21,7 @@ def show_override_log_prompt(
     confidence_score: float,
     campaign_name: str = "",
     risk_profile: str = "",
+    user_email: str = "",
 ):
     """
     Call this immediately after displaying the SCALE/HOLD/REDUCE/BLOCK output.
@@ -58,6 +59,7 @@ def show_override_log_prompt(
         confidence_score=confidence_score,
         campaign_name=campaign_name,
         risk_profile=risk_profile,
+        user_email=user_email,
     )
 
     # Avoid duplicate logging on reruns
@@ -74,7 +76,8 @@ def show_followup_forms():
     Shows follow-up forms for any pending decisions that are now due (48hrs elapsed).
     Call this near the top of app.py so it surfaces on every session.
     """
-    pending = get_pending_followups()
+    user_email = st.session_state.get("user_email", "")
+    pending = get_pending_followups(user_email=user_email)
     if not pending:
         return
 

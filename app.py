@@ -371,6 +371,7 @@ st.set_page_config(page_title="MDU Engine", layout="wide")
 if not show_login_gate():
     st.stop()
 show_user_header()
+show_followup_forms()
 
 # Google Analytics
 st.markdown("""
@@ -986,6 +987,7 @@ for label, (platform_key, df_raw, import_result, result, decision) in channel_ou
         confidence_score=float(result.get("decision_confidence", 0.0)),
         campaign_name=label,
         risk_profile=profile_name,
+        user_email=st.session_state.get("user_email", ""),
     )
 
     exp = decision.get("explainability")

@@ -85,10 +85,11 @@ def _save_log(log_entry: dict):
 
 def create_override_log(
     decision_id: str,
-    recommendation: str,       # SCALE / HOLD / REDUCE / BLOCK
+    recommendation: str,
     confidence_score: float,
     campaign_name: str = "",
     risk_profile: str = "",
+    user_email: str = "",
 ) -> str:
     """
     Called immediately after MDU Engine outputs a recommendation.
@@ -103,8 +104,9 @@ def create_override_log(
         "confidence_score": confidence_score,
         "campaign_name": campaign_name,
         "risk_profile": risk_profile,
+        "user_email": user_email,
         "created_at": datetime.utcnow().isoformat(),
-        "followup_due_at": (datetime.utcnow() + timedelta(hours=48)).isoformat(),
+        "followup_due_at": (datetime.utcnow() + timedelta(minutes=2)).isoformat(),
         "status": "pending",           # pending → completed
         "was_followed": None,          # True / False
         "override_reason": None,       # free text if overridden
@@ -143,11 +145,12 @@ def record_outcome(
     return True
 
 
-def get_pending_followups() -> list:
+def get_pending_followups(user_email: str = "") -> list:
     """
     Returns all log entries where:
     - status is 'pending'
     - followup_due_at has passed (i.e. 48 hours have elapsed)
+    - user_email matches if provided
     """
     logs = _load_all_logs()
     now = datetime.utcnow()
@@ -156,9 +159,9 @@ def get_pending_followups() -> list:
         if log["status"] == "pending":
             due = datetime.fromisoformat(log["followup_due_at"])
             if now >= due:
-                pending.append(log)
+                if not user_email or log.get("user_email", "") == user_email:
+                    pending.append(log)
     return pending
-
 
 def get_override_summary() -> dict:
     """
