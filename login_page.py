@@ -173,6 +173,17 @@ def _render_otp_step():
                 st.session_state.pop("login_step", None)
                 st.session_state.pop("login_email_pending", None)
                 st.session_state.pop("login_name_pending", None)
+                st.markdown("""
+<script>
+  if (typeof gtag !== 'undefined') {
+    gtag('event', 'sign_up', {
+      'method': 'OTP',
+      'event_category': 'engagement',
+      'event_label': 'MDU Engine Login'
+    });
+  }
+</script>
+""", unsafe_allow_html=True)
                 st.rerun()
             else:
                 st.error(result["error"])
