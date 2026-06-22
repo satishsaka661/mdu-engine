@@ -6,9 +6,53 @@ Returns True if user is authenticated, False if not.
 """
 
 import streamlit as st
+import requests
+import uuid
 from mdu_engine.auth import generate_otp, store_otp, verify_otp
 from mdu_engine.mailer import send_otp_email
 
+
+# ── GA4 Measurement Protocol config ───────────────────────────────────────────
+_GA4_MEASUREMENT_ID = "G-RM6RGSHRL0"
+_GA4_API_SECRET     = "8VOSdTPYQU2OdkOgRBtgSg"
+
+
+def _send_ga4_signup_event(email: str) -> None:
+    """
+    Fire a sign_up event to GA4 via Measurement Protocol (server-side).
+    Uses a stable client_id derived from the user's email (UUID v5).
+    Never blocks login — all errors are silently swallowed.
+    """
+    client_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, email))
+
+    payload = {
+        "client_id": client_id,
+        "events": [{
+            "name": "sign_up",
+            "params": {
+                "method": "OTP",
+                "event_category": "engagement",
+                "event_label": "MDU Engine Login",
+                "engagement_time_msec": "1"
+            }
+        }]
+    }
+
+    try:
+        requests.post(
+            "https://www.google-analytics.com/mp/collect",
+            params={
+                "measurement_id": _GA4_MEASUREMENT_ID,
+                "api_secret":     _GA4_API_SECRET,
+            },
+            json=payload,
+            timeout=3
+        )
+    except Exception:
+        pass  # never block login over analytics
+
+
+# ── Public API ─────────────────────────────────────────────────────────────────
 
 def show_login_gate() -> bool:
     """
@@ -41,6 +85,8 @@ def show_login_gate() -> bool:
 
     return False
 
+
+# ── Private helpers ────────────────────────────────────────────────────────────
 
 def _render_login_header():
     st.markdown("""
@@ -93,7 +139,7 @@ def _render_email_step():
         st.markdown("<div style='margin-top:4px;'></div>", unsafe_allow_html=True)
 
         if st.button("Send Login Code", use_container_width=True, type="primary"):
-            name = name.strip()
+            name  = name.strip()
             email = email.strip().lower()
 
             if not name:
@@ -104,15 +150,15 @@ def _render_email_step():
                 return
 
             with st.spinner("Sending your login code to " + email + "..."):
-                otp = generate_otp()
+                otp    = generate_otp()
                 store_otp(email, name, otp)
                 result = send_otp_email(email, name, otp)
 
             if result["success"]:
                 st.success("Code sent! Check your inbox and spam folder.")
-                st.session_state.login_step = "enter_otp"
-                st.session_state.login_email_pending = email
-                st.session_state.login_name_pending = name
+                st.session_state.login_step           = "enter_otp"
+                st.session_state.login_email_pending  = email
+                st.session_state.login_name_pending   = name
                 st.rerun()
             else:
                 st.error(f"Could not send email: {result['error']}")
@@ -167,23 +213,17 @@ def _render_otp_step():
 
             if result["success"]:
                 st.success(f"Welcome, {result['name']}! Loading your dashboard...")
+
+                # ── Fire GA4 sign_up event (server-side, before rerun) ──────
+                _send_ga4_signup_event(email)
+
+                # ── Update session state ────────────────────────────────────
                 st.session_state.authenticated = True
-                st.session_state.user_email = email
-                st.session_state.user_name = result["name"]
+                st.session_state.user_email    = email
+                st.session_state.user_name     = result["name"]
                 st.session_state.pop("login_step", None)
                 st.session_state.pop("login_email_pending", None)
                 st.session_state.pop("login_name_pending", None)
-                st.markdown("""
-<script>
-  if (typeof gtag !== 'undefined') {
-    gtag('event', 'sign_up', {
-      'method': 'OTP',
-      'event_category': 'engagement',
-      'event_label': 'MDU Engine Login'
-    });
-  }
-</script>
-""", unsafe_allow_html=True)
                 st.rerun()
             else:
                 st.error(result["error"])
@@ -198,7 +238,7 @@ def _render_otp_step():
         with col_resend:
             if st.button("Resend code", use_container_width=True):
                 with st.spinner("Resending code..."):
-                    new_otp = generate_otp()
+                    new_otp       = generate_otp()
                     store_otp(email, name, new_otp)
                     resend_result = send_otp_email(email, name, new_otp)
                 if resend_result["success"]:
